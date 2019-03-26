@@ -1,0 +1,164 @@
+package com.example.fieldnotes.java;
+
+import java.util.ArrayList;
+import java.util.List;
+
+/**
+ * Contains a set of <code>Notebooks</code> for the user to index into. This is the class
+ * used by the main activity to display buttons for the user.
+ *
+ * @author Steven Hricenak (2019)
+ */
+public class NotebookList {
+
+    private List<Notebook> list;
+
+    /**
+     * Default constructor for a <code>NotebookList</code> to be filled with the
+     * <code>populate</code> method at a later time.
+     */
+    public NotebookList() {
+    }
+
+    /**
+     * Constructor to create a <code>NotebookList</code> with a pre-defined list of
+     * <code>Notebook</code> objects.
+     */
+    public NotebookList(List<Notebook> list) {
+        this.list = list;
+    }
+
+    /**
+     * Creates a new NotebookList from a given list of notebooks.
+     */
+    public void populate(List<Notebook> list) {
+        this.list = list;
+    }
+
+    /**
+     * Adds a <code>Notebook</code> the the current <code>List</code> of
+     * <code>Notebooks</code>.
+     *
+     * @param notebook The <code>Notebook</code> to add to the <code>List</code>.
+     */
+    public void addNotebook(Notebook notebook) {
+        if (list != null) {
+            list.add(notebook);
+        }
+    }
+
+    /**
+     * Removes a <code>notebook</code> at a specified index.
+     *
+     * @param index The <code>index</code> of the <code>Notebook</code> in the <code>List</code>.
+     */
+    public void removeNotebook(int index) {
+        if (list != null) {
+            list.remove(index);
+        }
+    }
+
+    /**
+     * Checks if a notebook with the name provided exists, then removes it if it is found.
+     *
+     * @param name The name of the notebook to find and remove.
+     */
+    public void removeNotebook(String name) {
+        if (list != null) {
+            for (Notebook notebook : list) {
+                if (notebook.getNotebookName() == name) {
+                    list.remove(notebook);
+                    return;
+                }
+            }
+        }
+    }
+
+    /**
+     * Checks if a notebook with the given <code>unixTime</code> exists,
+     * then removes it if it is found.
+     *
+     * @param unixTime The unix time of the notebook to find and remove.
+     */
+    public void removeNotebook(long unixTime) {
+        if (list != null) {
+            for (Notebook notebook : list) {
+                if (notebook.getUnixTime() == unixTime) {
+                    list.remove(notebook);
+                    return;
+                }
+            }
+        }
+    }
+
+    /**
+     * Gets a <code>Notebook</code> at a specific index.
+     *
+     * @param index The index of the notebook to find and return.
+     * @return The <code>Notebook</code> at the passed index.
+     */
+    public Notebook getNotebook(int index) {
+        if (list != null) {
+            return list.get(index);
+        }
+        return null;
+    }
+
+    /**
+     * Returns the entire <code>List</code> of <code>Notebooks</code>.
+     *
+     * @return The <code>List</code> of <code>Notebooks</code>.
+     */
+    public List<Notebook> getNotebookList() {
+        return list;
+    }
+
+    /**
+     * Gets a notebook out of the list with the name provided.
+     *
+     * @param name The name to search for.
+     * @return The notebook if found, null if not found.
+     */
+    public Notebook getNotebook(String name) {
+        if (list != null) {
+            for (Notebook notebook : list) {
+                if (notebook.getNotebookName() == name) {
+                    return notebook;
+                }
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Returns the names of the <code>Notebook</code> objects in <code>list</code>
+     * in an <code>ArrayList</code>.
+     *
+     * @return The names of the <code>Notebook</code> objects in <code>list</code>.
+     */
+    public ArrayList<String> getNotebookNames() {
+        if (list != null) {
+            ArrayList<String> notebookNames = new ArrayList<>();
+            for (int i = 0; i < list.size(); i++) {
+                notebookNames.add(list.get(i).getNotebookName());
+            }
+            return notebookNames;
+        }
+        return null;
+    }
+
+    /**
+     * Returns the <code>unixTime</code> from the <code>Notebook</code> at index
+     * <code>notebookIndex</code> in <code>list</code>.
+     *
+     * @param notebookIndex The index of the <code>Notebook</code> in <code>list</code>.
+     * @return The <code>unixTime</code> of the <code>Notebook/code> indexed to.
+     */
+    public long getUnixTimeOfNotebook(int notebookIndex) {
+        if (list != null) {
+            Notebook notebook = list.get(notebookIndex);
+            return notebook.getUnixTime();
+        }
+        return 0;
+    }
+}

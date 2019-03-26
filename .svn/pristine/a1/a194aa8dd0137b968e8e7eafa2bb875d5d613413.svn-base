@@ -1,0 +1,173 @@
+package com.example.fieldnotes.activities;
+
+import android.app.ActionBar;
+import android.content.ContentResolver;
+import android.content.ContentValues;
+import android.content.Intent;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
+import android.net.Uri;
+import android.os.Bundle;
+import android.os.Environment;
+import android.os.StrictMode;
+import android.provider.MediaStore;
+import android.support.v7.app.AppCompatActivity;
+import android.support.v7.widget.Toolbar;
+import android.util.DisplayMetrics;
+import android.util.Log;
+import android.view.View;
+import android.widget.Button;
+import android.widget.EditText;
+import android.widget.ImageView;
+
+import com.example.fieldnotes.R;
+import com.example.fieldnotes.java.Picture;
+import com.example.fieldnotes.utilities.PictureGetter;
+
+import java.io.File;
+import java.util.Locale;
+
+/**
+ * An <code>Activity</code> that handles reviewing the picture the user just took. Upon creation
+ * it calls a function that checks user permissions and then sends the user to the camera
+ * activity, where the user takes a picture that is saved to a dedicated subdirectory in the
+ * default pictures path of the phone. Upon returning from the camera activity, the
+ * <code>ImageView</code> is populated with the picture just taken and the user can add
+ * a caption. The user then can take another photo, or click the back button to return to
+ * the parent <code>Stop</code> activity.
+ *
+ * Functionality is not yet completed for saving the pictures to the database.
+ *
+ * @author Steven Hricenak (2019)
+ */
+public class CaptionActivity extends AppCompatActivity {
+
+    private static final String TAG = "CaptionActivity";
+    private static final int TAKE_PICTURE_REQUEST_CODE = 1;
+
+    private int width;
+    private int height;
+
+    Picture picture;
+    Bitmap bitmap;
+    ImageView imageView;
+
+    /**
+     * Executes all code from the parent function, and additionally initializes the
+     * <code>ImageView</code>, and calls the Android camera.
+     *
+     * @param savedInstanceState The data stored by the app when it is minimized, brought out
+     *                           of focus, etc. so the app can restore its data.
+     */
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        setContentView(R.layout.activity_caption);
+        Toolbar toolbar = (Toolbar) findViewById(R.id.toolbar);
+        setSupportActionBar(toolbar);
+
+        Button retakeButton = findViewById(R.id.retake);
+        retakeButton.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                openCameraActivity();
+            }
+        });
+        getSupportActionBar().setDisplayHomeAsUpEnabled(false);
+
+        DisplayMetrics displayMetrics = new DisplayMetrics();
+        getWindowManager().getDefaultDisplay().getMetrics(displayMetrics);
+        height = displayMetrics.heightPixels;
+        width = displayMetrics.widthPixels;
+        imageView = findViewById(R.id.picture);
+        openCameraActivity();
+    }
+
+    /**
+     * Executes when the app returns from the camera intent. First checks if the
+     * <code>requestCode</code> aligns the the camera request
+     * (<code>TAKE_PICTURE_REQUEST_CODE</code>,) then displays the new picture in the
+     * <code>imageView</code>.
+     *
+     * The <code>resultCode</code> will be -1 if it executed correctly, and will be 0
+     * if an error occurred or the user cancelled out of the camera activity.
+     *
+     * @param requestCode The code that the initial <code>Intent</code> was sent with.
+     * @param resultCode The code returned from the activity.
+     * @param intent The intent sent from the activity.
+     */
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent intent) {
+        super.onActivityResult(requestCode, resultCode, intent);
+        if(requestCode == TAKE_PICTURE_REQUEST_CODE){
+            switch(resultCode){
+                case RESULT_CANCELED: //cancel is hit
+                    finish();
+                    break;
+                case RESULT_OK: //okay is hit
+                    bitmap = PictureGetter.getOrientedBitmap(picture.getFilePath());
+                    imageView.setImageBitmap(bitmap);
+                    EditText caption = (EditText) findViewById(R.id.caption);
+                    break;
+            }
+        }
+    }
+
+    /**
+     * Opens the Android camera activity. Saves the camera taken to a "Fieldnotes"
+     * subdirectory. (It will also create the subdirectory if it does not exist.)
+     * Also creates a <code>Picture</code> object with the current time
+     * and the filepath the image was saved to.
+     *
+     * Currently, on my (Steven Hricenak) device, the camera is saving to two locations:
+     * our dedicated subdirectory, and the default DCIM directory. This is not because of
+     * our code, but because my version of Android saves every photo the camera activity takes
+     * to the DCIM (including photos that are cancelled or retaken.) Depending on how many versions
+     * of Android this bug occurs on, and how much we view this as an actual issue, we may have to
+     * implement some sort of code to either prevent the DCIM from saving the images, or to
+     * go into it and delete photos from our app. I don't really want to do the latter, since the
+     * app shouldn't have access to user data not saved by the app itself, and I'm not sure if the
+     * former is even possible. We'll need to look into this more / determine if this is even that
+     * serious of an issue.
+     */
+    private void openCameraActivity(){
+
+        try {
+            StrictMode.VmPolicy.Builder builder = new StrictMode.VmPolicy.Builder();
+            StrictMode.setVmPolicy(builder.build());
+
+            long unixTime = System.currentTimeMillis();
+            String pictureName = Long.toString(unixTime) + ".jpg";
+            String appDirectory = "Fieldnotes";
+            File imageRoot = new File(Environment.getExternalStoragePublicDirectory(
+                    Environment.DIRECTORY_PICTURES), appDirectory);
+            imageRoot.mkdir();
+            File img = new File(imageRoot, pictureName);
+            Uri outputFileUri = Uri.fromFile(img);
+            Intent intent = new Intent(MediaStore.ACTION_IMAGE_CAPTURE);
+            intent.putExtra(MediaStore.EXTRA_OUTPUT, outputFileUri);
+
+            startActivityForResult(intent, TAKE_PICTURE_REQUEST_CODE);
+
+            ContentValues values = new ContentValues();
+
+            values.put(MediaStore.Images.Media.TITLE, pictureName);
+            values.put(MediaStore.Images.Media.DESCRIPTION, "");
+            values.put(MediaStore.Images.Media.DATE_TAKEN, unixTime);
+            values.put(MediaStore.Images.Media.MIME_TYPE, "image/jpeg");
+            values.put(MediaStore.Images.Media.ORIENTATION, 0);
+            values.put(MediaStore.Images.ImageColumns.BUCKET_ID, img.toString().toLowerCase(Locale.US).hashCode());
+            values.put(MediaStore.Images.ImageColumns.BUCKET_DISPLAY_NAME, img.getName().toLowerCase(Locale.US).hashCode());
+            values.put("_data", img.getAbsolutePath());
+
+            ContentResolver contentResolver = getContentResolver();
+            contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values);
+
+            String filePath = img.getAbsolutePath();
+            picture = new Picture(unixTime, filePath);
+
+        } catch (Exception e) {
+            Log.e(TAG, e.getMessage());
+        }
+    }
+}

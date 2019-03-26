@@ -1,0 +1,387 @@
+package com.example.fieldnotes.database;
+
+import android.app.Application;
+import android.arch.lifecycle.LiveData;
+import android.os.AsyncTask;
+
+import com.example.fieldnotes.java.Notebook;
+import com.example.fieldnotes.java.Picture;
+import com.example.fieldnotes.java.Stop;
+
+import java.util.List;
+
+/**
+ * A repository for managing query threads, since Android does not allow queries to be
+ * run within the main thread.
+ *
+ * @author Tyler Seidel (2019)
+ */
+public class FieldNotesRepo {
+
+    ////////////////////////////////////////////////////////////////////////////////////////////////
+    ////                                  CLASS VARIABLES                                         //
+    ////////////////////////////////////////////////////////////////////////////////////////////////
+
+    private NotebookDao nbDao;
+    private StopDao sDao;
+    private PictureDao pDao;
+
+    private LiveData<List<Notebook>> allNotebooks;
+    private LiveData<List<Stop>> allStops;
+    private LiveData<List<Picture>> allPictures;
+
+
+    ////////////////////////////////////////////////////////////////////////////////////////////////
+    ////                                   CONSTRUCTORS                                           //
+    ////////////////////////////////////////////////////////////////////////////////////////////////
+
+    /**
+     * Constructor which gets a handle to the database for member variable initialization using the
+     * <code>application</code> parameter.
+     */
+    public FieldNotesRepo(Application application) {
+        //retrieve database instance from the app
+        FieldNotesRoomDatabase db = FieldNotesRoomDatabase.getDatabase(application);
+
+        nbDao = db.notebookDao();
+        sDao = db.stopDao();
+        pDao = db.pictureDao();
+
+        allNotebooks = nbDao.getAllNotebooks();
+        allStops = sDao.getAllStops();
+        allPictures = pDao.getAllPictures();
+    }
+
+
+    ////////////////////////////////////////////////////////////////////////////////////////////////
+    ////                         NOTEBOOK-RELATED METHODS/CLASSES                                 //
+    ////////////////////////////////////////////////////////////////////////////////////////////////
+
+    /**
+     * Helper task class used to insert a <code>Notebook</code> into the database in an
+     * asynchronous thread.
+     */
+    private static class insertAsyncNotebookTask extends AsyncTask<Notebook, Void, Void> {
+
+        private NotebookDao asyncNotebookDao;
+
+        insertAsyncNotebookTask(NotebookDao dao) {asyncNotebookDao = dao;}
+
+
+        @Override
+        protected Void doInBackground(final Notebook... params) {
+            asyncNotebookDao.insert(params[0]);
+            return null;
+        }
+    }
+
+    /**
+     * Helper class used to delete a <code>Notebook</code> from the database in an
+     * asynchronous thread
+     */
+    private static class deleteAsyncNotebookTask extends AsyncTask<Notebook, Void, Void> {
+
+        private NotebookDao asyncNotebookDao;
+        private StopDao asyncStopDao;
+        deleteAsyncNotebookTask(NotebookDao nbDao, StopDao sDao) {
+            asyncNotebookDao = nbDao;
+            asyncStopDao = sDao;
+        }
+
+        /**
+         * Given a Notebook, use it's unix time to perform an asynchronous deletion of the notebook
+         * from the database, and then delete all stops from the database belonging to the notebook
+         * (by use of the stops' foreign keys)
+         */
+        @Override
+        protected Void doInBackground(final Notebook... params) {
+            long parent_unix_time = params[0].getUnixTime();
+            asyncNotebookDao.deleteNotebook(parent_unix_time);
+            asyncStopDao.deleteAllStopsByNotebook(parent_unix_time);
+            return null;
+        }
+    }
+
+    /**
+     * A class for asynchronous database updates.
+     */
+    private static class updateAsyncNotebookTask extends AsyncTask<Notebook, Void, Void> {
+
+        private Notebook notebook;
+        private NotebookDao asyncNotebookDao;
+        updateAsyncNotebookTask(NotebookDao nbDao) {asyncNotebookDao = nbDao;}
+
+        /**
+         * Given a notebook, find (by its unix time) and update the name of the notebook in the
+         * database by use of a <code>NotebookDao</code>.
+         */
+        @Override
+        protected Void doInBackground(final Notebook... params) {
+            notebook = params[0];
+            long unix_time = notebook.getUnixTime();
+            asyncNotebookDao.updateNotebook(notebook.getNotebookName(), unix_time);
+            return null;
+        }
+    }
+
+    /**
+     * Method for getting a live list of <code>Notebook</code> objects.
+     */
+    public LiveData<List<Notebook>> getAllNotebooks(){return allNotebooks;}
+
+    /**
+     * Method for getting a <code>Notebook</code> by its <code>unixTime</code>.
+     */
+    public Notebook getNotebook(long unixTime) {return nbDao.selectNotebook(unixTime);}
+
+    /**
+     * Public method for inserting a <code>Notebook</code> into the database through use of a
+     * private <code>insertAsyncNotebookTask</code> object.
+     */
+    public void insert (Notebook notebook) { new insertAsyncNotebookTask(nbDao).execute(notebook); }
+
+    /**
+     * Public method for deleting a <code>Notebook</code> from the database through use of a
+     * private <code>deleteAsyncNotebookTask</code> object.
+     */
+    public void delete(Notebook notebook) { new deleteAsyncNotebookTask(nbDao, sDao).execute(notebook); }
+
+    /**
+     * Public method for updating a <code>Notebook</code> within the database through use of a
+     * private <code>updateAsyncNotebookTask</code> object.
+     */
+    public void update(Notebook notebook) { new updateAsyncNotebookTask(nbDao).execute(notebook); }
+
+    /**
+     * Method for updating a <code>Notebook</code> in the database synchronously, so that the
+     * data committed is immediately available.
+     */
+    public void updateSynchronously(Notebook notebook){
+        nbDao.updateNotebook(notebook.getNotebookName(), notebook.getUnixTime());
+    }
+
+    ////////////////////////////////////////////////////////////////////////////////////////////////
+    ////                             STOP-RELATED METHODS/CLASSES                                 //
+    ////////////////////////////////////////////////////////////////////////////////////////////////
+
+    /**
+     * Helper task class used to insert a <code>Stop</code> into the database in an
+     * asynchronous thread.
+     */
+    private static class insertAsyncStopTask extends AsyncTask<Stop, Void, Void> {
+        private StopDao asyncStopDao;
+
+        insertAsyncStopTask(StopDao dao) {asyncStopDao = dao;}
+
+
+        @Override
+        protected Void doInBackground(final Stop... params) {
+            asyncStopDao.insert(params[0]);
+            return null;
+        }
+    }
+
+    /**
+     * Helper task class used to delete a <code>Stop</code> from the database in an
+     * asynchronous thread.
+     */
+    private static class deleteAsyncStopTask extends AsyncTask<Stop, Void, Void> {
+
+        private StopDao asyncStopDao;
+        deleteAsyncStopTask(StopDao sDao) {
+            asyncStopDao = sDao;
+        }
+
+        /**
+         * Given a Notebook, use it's unix time to perform an asynchronous deletion of the notebook
+         * from the database, and then delete all stops from the database belonging to the notebook
+         * (by use of the stops' foreign keys)
+         */
+        @Override
+        protected Void doInBackground(final Stop... params) {
+            long unix_time = params[0].getUnixTime();
+            asyncStopDao.deleteStop(unix_time);
+            return null;
+        }
+    }
+
+    private static class updateAsyncStopTask extends AsyncTask<Stop, Void, Void> {
+
+        private Stop stop;
+        private StopDao asyncStopDao;
+        updateAsyncStopTask(StopDao sDao) {asyncStopDao = sDao;}
+
+        /**
+         * Given a notebook, find (by its unix time) and update the name of the notebook in the
+         * database by use of a <code>NotebookDao</code>.
+         */
+        @Override
+        protected Void doInBackground(final Stop... params){
+            stop = params[0];
+            long unix_time = stop.getUnixTime();
+            String name = stop.getStopName();
+            double latitude = stop.getLatitude();
+            double longitude = stop.getLongitude();
+            String notes = stop.notes();
+            long time = stop.getTime();
+            long parent = stop.getParentUnixTime();
+            asyncStopDao.updateStop(unix_time, name, latitude, longitude, notes, time, parent);
+            return null;
+        }
+    }
+
+    /**
+     * Private method for getting a live list of <code>Stop</code> objects.
+     */
+    public LiveData<List<Stop>> getAllStops(){return allStops;}
+
+    /**
+     * Call the <code>FieldNotesRepo</code> to perform the retrieval of all notebooks with a foreign
+     * key matching the primary key of a given <code>Notebook</code> object.
+     */
+    public LiveData<List<Stop>>getAllStopsByNotebook(Notebook notebook) {
+        return sDao.getStopsByNotebook(notebook.getUnixTime());
+    }
+
+    /**
+     * Call the <code>FieldNotesRepo</code> to perform a synchronous retrieval of all notebooks
+     * with a foreign key matching the primary key of a given <code>Notebook</code> object so
+     * the data is guaranteed to be available right after the query.
+     */
+    public List<Stop>getStopsByNotebookSynchronously(Notebook notebook) {
+        return sDao.getStopsByNotebookSynchronously(notebook.getUnixTime());
+    }
+
+    /**
+     *
+     * @param unixTime
+     * @return
+     */
+    public Stop getStop(long unixTime) {return sDao.selectStop(unixTime);}
+
+    /**
+     * Public method for inserting a <code>Stop</code> into the database through use of a
+     * private <code>insertAsyncStopTask</code> object.
+     */
+    public void insert(Stop stop) { new insertAsyncStopTask(sDao).execute(stop); }
+
+    /**
+     * Public method for deleting a <code>Stop</code> from the database through use of a
+     * private <code>deleteAsyncStopTask</code> object.
+     */
+    public void delete(Stop stop) { new deleteAsyncStopTask(sDao).execute(stop); }
+
+    /**
+     * Public method for deleting a <code>Stop</code> within the database through use of a
+     * private <code>updateAsyncStopTask</code> object.
+     */
+    public void update(Stop stop){new updateAsyncStopTask(sDao).execute();}
+
+    /**
+     * Updates a <code>Stop</code> in the database synchronously. That is, it can be called
+     * from the main thread of the application. This function was created to resolve some issues
+     * where the database wouldn't be updated before the data in it needed to be accessed again.
+     *
+     * @param stop The <code>Stop</code> to be updated in the database.
+     */
+    public void updateSynchronously(Stop stop){
+        sDao.updateStop(stop.getUnixTime(), stop.getStopName(), stop.getLatitude(),
+                stop.getLongitude(), stop.notes(), stop.getTime(), stop.getParentUnixTime());
+    }
+
+    ////////////////////////////////////////////////////////////////////////////////////////////////
+    ////                             PICTURE-RELATED METHODS/CLASSES                              //
+    ////////////////////////////////////////////////////////////////////////////////////////////////
+
+    /**
+     * Helper task class used to insert a <code>Picture</code> into the database in an
+     * asynchronous thread.
+     */
+    private static class insertAsyncPictureTask extends AsyncTask<Picture, Void, Void> {
+        private PictureDao asyncPictureDao;
+
+        insertAsyncPictureTask(PictureDao dao) {asyncPictureDao = dao;}
+
+
+        @Override
+        protected Void doInBackground(final Picture... params) {
+            asyncPictureDao.insert(params[0]);
+            return null;
+        }
+    }
+
+    /**
+     * Private method for getting a live list of <code>Picture</code> objects.
+     */
+    public LiveData<List<Picture>> getAllPictures(){return allPictures;}
+
+    /**
+     * Method for getting all the <code>Pictures</code> belonging to a <code>Stop</code> by its
+     * <code>unixTime</code>.
+     *
+     * @param parentUnixTime The <code>unixTime</code> of the parent <code>Stop</code>.
+     * @return The Live Data for the <code>Pictures</code>. Needs to be observed.
+     */
+    public LiveData<List<Picture>> getPicturesByParentUnixTime(long parentUnixTime){
+        return pDao.getPicturesByParentUnixTime(parentUnixTime);
+    }
+
+    /**
+     * Method for getting all the <code>Pictures</code> belonging to a <code>Stop</code> by its
+     * <code>unixTime</code> synchronously, so the data is ensured to be available right
+     * after the query.
+     *
+     * @param parentUnixTime The <code>unixTime</code> of the parent <code>Stop</code>.
+     * @return The <code>List</code> of <code>Pictures</code> belonging to the <code>Stop</code>.
+     */
+    public List<Picture> getPicturesByParentUnixTimeSynchronously(long parentUnixTime){
+        return pDao.getPicturesByParentUnixTimeSynchronously(parentUnixTime);
+    }
+
+    /**
+     * Public method for inserting a <code>Picture</code> into the database through use of a
+     * private <code>insertAsyncPictureTask</code> object.
+     */
+    public void insert(Picture picture) { new insertAsyncPictureTask(pDao).execute(picture);}
+
+    /**
+     * Updates a <code>Picture</code> in the database synchronously. That is, it can be called
+     * from the main thread of the application. This function was created to resolve some issues
+     * where the database wouldn't be updated before the data in it needed to be accessed again.
+     *
+     * @param picture The <code>Picture</code> to be updated in the database.
+     */
+    public void updateSynchronously(Picture picture){
+        pDao.updatePicture(picture.getUnixTime(), picture.getParentUnixTime(), picture.getFilePath(), picture.caption());
+    }
+
+    /**
+     * Helper task class used to delete a <code>Picture</code> from the database in an
+     * asynchronous thread.
+     */
+    private static class deleteAsyncPictureTask extends AsyncTask<Picture, Void, Void> {
+
+        private PictureDao asyncPictureDao;
+        deleteAsyncPictureTask(PictureDao sDao) {
+            asyncPictureDao = sDao;
+        }
+
+        /**
+         * Given a Picture, use it's unix time to perform an asynchronous deletion of the notebook
+         * from the database
+         */
+        @Override
+        protected Void doInBackground(final Picture... params) {
+            long unix_time = params[0].getUnixTime();
+            asyncPictureDao.delete(unix_time);
+            return null;
+        }
+    }
+
+    /**
+     * Public method for deleting a <code>Picture</code> from the database through use of a
+     * private <code>deleteAsyncPictureTask</code> object.
+     */
+    public void delete(Picture picture) { new deleteAsyncPictureTask(pDao).execute(picture); }
+
+}

@@ -1,0 +1,52 @@
+package com.example.fieldnotes.database;
+
+import android.arch.lifecycle.LiveData;
+import android.arch.persistence.room.Dao;
+import android.arch.persistence.room.Insert;
+import android.arch.persistence.room.Query;
+
+import com.example.fieldnotes.java.Stop;
+
+import java.util.List;
+
+/**
+ * Data access object for database interaction with <code>Stop</code> objects. Used to map
+ * SQL queries to Java methods for easier access within other packages.
+ *
+ * @author Tyler Seidel (2019)
+ */
+@Dao
+public interface StopDao {
+
+    @Insert()
+    void insert(Stop stop);
+
+    @Query("DELETE FROM stops_table")
+    void deleteAll();
+
+    @Query("DELETE FROM stops_table WHERE parent_notebook_id = :parent_unix_time")
+    void deleteAllStopsByNotebook(long parent_unix_time);
+
+    @Query("SELECT * FROM stops_table WHERE stop_id = :stop_unix_time")
+    Stop selectStop(long stop_unix_time);
+
+    @Query("SELECT * FROM stops_table WHERE parent_notebook_id = :parent_unix_time")
+    LiveData<List<Stop>> getLiveStopsByNotebook(long parent_unix_time);
+
+    @Query("SELECT * FROM stops_table WHERE parent_notebook_id = :parent_unix_time")
+    List<Stop> getStopsByNotebook(long parent_unix_time);
+
+    @Query("SELECT * FROM stops_table WHERE parent_notebook_id = :parent_unix_time")
+    List<Stop> getStopsByNotebookSynchronously(long parent_unix_time);
+
+    @Query("SELECT * FROM stops_table")
+    LiveData<List<Stop>> getAllStops();
+
+    @Query("UPDATE stops_table SET stop_name=:name, latitude=:lat, longitude=:log, notes=:notes, stop_time=:time, parent_notebook_id=:parent_time WHERE stop_id=:unix_time")
+    void updateStop(long unix_time, String name, double lat, double log, String notes, long time, long parent_time);
+
+    @Query("DELETE FROM stops_table WHERE stop_id = :unix_time")
+    void deleteStop(long unix_time);
+
+
+}

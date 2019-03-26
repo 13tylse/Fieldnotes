@@ -1,0 +1,175 @@
+package com.example.fieldnotes.utilities;
+
+import android.graphics.Bitmap;
+import android.os.Environment;
+import android.util.Log;
+
+import com.example.fieldnotes.java.Notebook;
+import com.example.fieldnotes.java.Picture;
+import com.example.fieldnotes.java.Stop;
+
+import java.io.BufferedWriter;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileWriter;
+import java.io.IOException;
+import java.io.InputStream;
+import java.text.DecimalFormat;
+import java.util.ArrayList;
+import java.util.Calendar;
+
+public class RtfUtility {
+
+    private static final String TAG = "RTF Utility";
+
+    private static final String DIRECTORY_NAME = "Fieldnotes";
+    private static final String RTF_HEADER = "{\\rtf1\\ansi\\deff0 {\\fonttbl {\\f0 Times New Roman;}}";
+    private static final String RTF_NEWLINE = System.getProperty("line.separator");
+
+    private static final int SCALE_FACTOR = 4;
+
+    public static void createRTF(Notebook notebook){
+        try{
+            /*File dir = new File(Environment.getExternalStoragePublicDirectory(
+                    Environment.DIRECTORY_DOCUMENTS), DIRECTORY_NAME);
+            dir.mkdir();
+
+            File file = new File(dir, notebook.getNotebookName() + ".rtf");*/
+
+            File file = new File(Environment.getExternalStoragePublicDirectory(
+                    Environment.DIRECTORY_DOWNLOADS), notebook.getNotebookName() + ".rtf");
+            int i = 1;
+            while(file.exists()){
+                file = new File(Environment.getExternalStoragePublicDirectory(
+                        Environment.DIRECTORY_DOWNLOADS), notebook.getNotebookName() + "(" + i + ").rtf");
+                i++;
+            }
+
+            file.createNewFile();
+            BufferedWriter writer = new BufferedWriter(new FileWriter(file));
+            generateRichText(notebook, writer);
+            writer.close();
+        }catch(Exception e){
+            Log.e(TAG, e.getMessage());
+        }
+    }
+
+    private static void generateRichText(Notebook notebook, BufferedWriter writer) throws IOException {
+        writer.append(RTF_HEADER);
+        writer.append(RTF_NEWLINE);
+
+        String name = notebook.getNotebookName();
+        writer.append("{\\pard\\qc\\f0\\fs48 " + name + "\\par}");
+        writer.append(RTF_NEWLINE);
+
+        ArrayList<Stop> stops = notebook.getStopList();
+        getStopsText(stops, writer);
+
+        writer.append("}");
+    }
+
+    private static void getStopsText(ArrayList<Stop> stops, BufferedWriter writer) throws IOException{
+        for(Stop stop : stops){
+            String name = stop.getStopName();
+            writer.append("{\\pard\\f0\\fs32 "+ name + "\\par}");
+            writer.append(RTF_NEWLINE);
+
+            String timeString = getTimeString(stop.getTime());
+            writer.append("{\\pard\\f0\\fs24 Time: "+ timeString + "\\par}");
+
+            String coordString = getCoordinatesString(stop.getLongitude(), stop.getLatitude());
+            if(coordString != null)
+                writer.append("{\\pard\\f0\\fs24 Coordinates: "+ coordString + "\\par}");
+
+            writer.append("{\\pard\\f0\\fs24 "+ stop.notes() + "\\par}");
+
+            ArrayList<Picture> pics = stop.getPictureArrayList();
+            if(pics != null && pics.size() > 0) {
+                writer.append("{\\pard \\par}");
+                getPicturesString(pics, writer);
+            }
+
+            writer.append("{\\pard \\par}");
+        }
+    }
+
+    private static String getTimeString(long time){
+        Calendar calendar = Calendar.getInstance();
+        calendar.setTimeInMillis(time);
+
+        int year = calendar.get(Calendar.YEAR);
+        int month = calendar.get(Calendar.MONTH) + 1; //January is 1
+        int day = calendar.get(Calendar.DAY_OF_MONTH);
+
+        int hour = calendar.get(Calendar.HOUR);
+        if (hour == 0)   //calendar represents noon and midnight with 0.
+            hour = 12;
+        int ampm = calendar.get(Calendar.AM_PM);
+        String ampmText = (ampm == Calendar.AM ? "am" : "pm");
+        int minute = calendar.get(Calendar.MINUTE);
+
+        DecimalFormat df = new DecimalFormat("00");
+        String dateText = "" + df.format(month) + "/" + df.format(day) + "/" + year;
+        String timeText = "" + hour + ":" + df.format(minute) + ampmText;
+        String dateTime = timeText + " " + dateText;
+
+        return dateTime;
+    }
+
+    private static String getCoordinatesString(double longitude, double latitude){
+        if (longitude == 0 && latitude == 0)
+            return null;
+
+        String longDir = (longitude > 0 ? "E" : "W");
+        String latDir = (latitude > 0 ? "N" : "S");
+
+        longitude = Math.abs(longitude);
+        latitude = Math.abs(latitude);
+
+        String fullCoordinates = "" + latitude + latDir + ", " + longitude + longDir;
+        return fullCoordinates;
+    }
+
+    private static void getPicturesString(ArrayList<Picture> pictures, BufferedWriter writer) throws IOException{
+        if(pictures.size() == 0)
+            return;
+        InputStream imageIP;
+        Bitmap bitmap;
+        for(Picture picture : pictures){
+            String filepath = picture.getFilePath();
+            imageIP = new FileInputStream(filepath);
+            bitmap = PictureGetter.getOrientedBitmap(filepath);
+
+            ByteArrayOutputStream stream = new ByteArrayOutputStream();
+            bitmap.compress(Bitmap.CompressFormat.JPEG, 50, stream);
+            byte[] imageInBytes = stream.toByteArray();
+            ByteArrayInputStream bis = new ByteArrayInputStream(imageInBytes);
+
+
+            if(imageIP == null || bitmap == null)
+                continue;
+
+            int width = bitmap.getWidth()*SCALE_FACTOR;
+            int height = bitmap.getHeight()*SCALE_FACTOR;
+
+            writer.append("{\\pict\\jpegblip\\picw"+width+"\\pich"+height+"\\picwgoal"+width+
+                    "\\pichgoal"+height+"\\hex ");
+            getHex(bis, writer);
+            writer.append("}");
+            String caption = picture.caption();
+            writer.append("{\\pard\\qc\\f0\\fs20 " + caption + "\\par}");
+        }
+    }
+
+    private static void getHex(InputStream imageIP, BufferedWriter writer) throws IOException{
+        int temp;
+        while((temp = imageIP.read()) != -1){ //gives -1 when stream reaches EOF
+            String hexString = Integer.toHexString(temp);
+            if(hexString.length() == 1)
+                hexString = "0" + hexString;
+            writer.append(hexString);
+        }
+    }
+}

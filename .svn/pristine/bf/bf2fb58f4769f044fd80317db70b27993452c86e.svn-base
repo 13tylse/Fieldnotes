@@ -1,0 +1,610 @@
+package com.example.fieldnotes.activities;
+
+import android.annotation.TargetApi;
+import android.app.DatePickerDialog;
+import android.app.Dialog;
+import android.app.TimePickerDialog;
+import android.arch.lifecycle.Observer;
+import android.arch.lifecycle.ViewModelProviders;
+import android.content.DialogInterface;
+import android.content.Intent;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
+import android.os.Build;
+import android.os.Bundle;
+import android.speech.RecognizerIntent;
+import android.support.annotation.Nullable;
+import android.support.design.widget.FloatingActionButton;
+import android.support.v7.app.AlertDialog;
+import android.support.v7.app.AppCompatActivity;
+import android.support.v7.widget.Toolbar;
+import android.util.DisplayMetrics;
+import android.view.KeyEvent;
+import android.view.View;
+import android.widget.DatePicker;
+import android.widget.EditText;
+import android.widget.ImageView;
+import android.widget.LinearLayout;
+import android.widget.ScrollView;
+import android.widget.TextView;
+import android.widget.TimePicker;
+
+import com.example.fieldnotes.R;
+import com.example.fieldnotes.database.FieldNotesViewModel;
+import com.example.fieldnotes.java.Picture;
+import com.example.fieldnotes.java.Stop;
+import com.example.fieldnotes.utilities.PermissionsUtility;
+import com.example.fieldnotes.utilities.PictureGetter;
+
+import java.text.DecimalFormat;
+import java.util.ArrayList;
+import java.util.Calendar;
+import java.util.List;
+
+/**
+ * The <code>Activity</code> to represent a <code>Stop</code>. It contains fields for the
+ * date/time, coordinates, log notes, and pictures associated with a <code>Stop</code>. It also has
+ * a floating action button to take photos for this <code>Stop</code>.
+ *
+ * @author Steven Hricenak (2019)
+ */
+public class StopActivity extends AppCompatActivity {
+
+    private static final int AUDIO_REQUEST_CODE = 1;
+    private static final int OLD_DATE_TIME_REQUEST_CODE = 2;
+    private static final int GEOLOCATION_REQUEST_CODE = 3;
+    //constants
+    private static final String PARENT_UNIX = "Parent Unix Time";
+    private static final String THIS_UNIX = "Unix Time";
+
+    private int width;
+    private int height;
+    private Stop stop;
+    private EditText noteField;
+    private FieldNotesViewModel viewModel;
+
+    /**
+     * Calls the parent <code>onCreate</code> method, then initializes the <code>noteField</code>
+     * and queries the database for pre-existing data that belongs to this <code>Stop</code>.
+     * This will also map the <code>openCaption</code> method to the floating action button.
+     * <br/>
+     * NOTE: The database functionality is not currently implemented.
+     *
+     * @param savedInstanceState The data stored by the app when it is minimized, brought out
+     *                           of focus, etc. so the app can restore its data.
+     */
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        setContentView(R.layout.activity_stop);
+        Toolbar toolbar = findViewById(R.id.toolbar);
+        setSupportActionBar(toolbar);
+        toolbar.setNavigationOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                onBackPressed();
+            }
+        });
+
+        FloatingActionButton fab = findViewById(R.id.fab);
+        fab.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                openCaption();
+            }
+        });
+        getSupportActionBar().setDisplayHomeAsUpEnabled(true);
+
+        noteField = findViewById(R.id.log);
+
+        viewModel = ViewModelProviders.of(this).get(FieldNotesViewModel.class);
+
+        long unixTime = getIntent().getLongExtra(THIS_UNIX, 0);
+        if (unixTime == 0) {
+            stop = new Stop(System.currentTimeMillis());
+        } else {
+            stop = viewModel.getStopByUnixTime(unixTime);
+        }
+
+        initializeDisplayMetrics();
+        findViewById(R.id.loadingPanelStop).setVisibility(View.GONE);
+        setTitle(stop.getStopName());
+        populateNotes();
+        populateTime();
+        populateGeolocation();
+        populatePictures();
+    }
+
+    @Override
+    public void onBackPressed() {
+        Intent intent = new Intent(this, NotebookActivity.class);
+        intent.putExtra("Unix Time", stop.getParentUnixTime());
+        setResult(RESULT_OK, intent);
+        finish();
+    }
+
+    /**
+     * Sets the sizes of fields and buttons so everything is displayed on the
+     * screen correctly.
+     */
+    private void initializeDisplayMetrics() {
+        DisplayMetrics displayMetrics = new DisplayMetrics();
+        getWindowManager().getDefaultDisplay().getMetrics(displayMetrics);
+        this.height = displayMetrics.heightPixels;
+        this.width = displayMetrics.widthPixels;
+
+        TextView coord = (TextView) findViewById(R.id.coords);
+        TextView log = (TextView) findViewById(R.id.log);
+        TextView datetime = (TextView) findViewById(R.id.dateTime);
+
+        coord.setWidth((int) (width * 0.8));
+        log.setWidth((int) (width * 0.8));
+        datetime.setWidth((int) (width * 0.8));
+
+        if (height > width) {
+//            pictureDimension = width;
+        } else {
+
+        }
+    }
+
+    /**
+     * Checks if pre-existing <code>notes</code> exist from the <code>Stop</code>. If so,
+     * populates the <code>TextView</code>.
+     */
+    private void populateNotes() {
+        if (stop.notes() != null) {
+            TextView noteField = findViewById(R.id.log);
+            noteField.append(stop.notes());
+        }
+    }
+
+    /**
+     * Checks the user's permissions, and calls the
+     * <code>getPictureStringsForPopulating</code> method to get the paths of the
+     * <code>PictureFNs</code> from the database.
+     */
+    private void populatePictures() {
+        if (PermissionsUtility.getPermissions(this, PermissionsUtility.EXTERNAL_STORAGE)) {
+            getPictureStringsForPopulating();
+        }
+    }
+
+    /**
+     * A helper function that takes all the <code>Picture</code> objects belonging to this
+     * <code>Stop</code> from the database, and sends the filepaths of the photos they
+     * represent to <code>processPictures</code> to be loaded to the screen.
+     */
+    private void getPictureStringsForPopulating(){
+        final ArrayList<Picture> res = new ArrayList<>();
+
+        viewModel.getPicturesByParentUnixTime(stop.getUnixTime()).observe(this, new Observer<List<Picture>>(){
+            @Override
+            public void onChanged(@Nullable final List<Picture> tempPics) {
+                res.addAll(tempPics);
+                processPictures(res);
+            }
+        });
+    }
+
+    /**
+     * Fills the <code>ScrollView</code> with images from the database from the current
+     * <code>Stop</code>. Currently uses dummy data.
+     */
+    private void processPictures(final ArrayList<Picture> pictures){
+        LinearLayout picture_layout = findViewById(R.id.picture_list);
+
+        for (int i = 0; i < pictures.size(); i++) {
+            String picturePath = pictures.get(i).getFilePath();
+            final int spot = i;
+
+            final BitmapFactory.Options pictureOptions = new BitmapFactory.Options();
+            pictureOptions.inJustDecodeBounds = true;
+            BitmapFactory.decodeFile(picturePath, pictureOptions);
+
+            pictureOptions.inSampleSize = calculateInSampleSize(pictureOptions, (int) (height *.15 ), (int) (width * .15));
+
+            ImageView pictureView = new ImageView(this);
+            pictureView.setScaleType(ImageView.ScaleType.CENTER_CROP);
+            pictureView.setPadding(5, 0, 5, 0);
+
+            pictureOptions.inJustDecodeBounds = false;
+            Bitmap scaledPicture = BitmapFactory.decodeFile(pictures.get(i).getFilePath(), pictureOptions);
+            final int orientation = PictureGetter.getOrientation(picturePath);
+            scaledPicture = PictureGetter.fixOrientation(scaledPicture, orientation);
+
+            pictureView.setImageBitmap(scaledPicture);
+
+            //listener that shows picture as enlarged popup
+            pictureView.setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    enlargePicture(pictures.get(spot), orientation);
+                }
+            });
+            picture_layout.addView(pictureView);
+        }
+
+    }
+
+    private static int calculateInSampleSize(BitmapFactory.Options options, int reqWidth, int reqHeight) {
+        // Raw height and width of image
+        final int height = options.outHeight;
+        final int width = options.outWidth;
+        int inSampleSize = 1;
+
+        if (height > reqHeight || width > reqWidth) {
+            final int halfHeight = height / 2;
+            final int halfWidth = width / 2;
+            // Calculate the largest inSampleSize value that is a power of 2 and keeps both
+            // height and width larger than the requested height and width.
+            while ((halfHeight / inSampleSize) >= reqHeight
+                    && (halfWidth / inSampleSize) >= reqWidth) {
+                inSampleSize *= 2;
+            }
+        }
+        return inSampleSize;
+    }
+
+
+    /**
+     * Shows enlarged popup of selected picture and it's respective caption.
+     *
+     * @param picture a String of a pictures file path
+     */
+    private void enlargePicture(Picture picture, int orientation) {
+        ScrollView scrollView = new ScrollView(this);
+        LinearLayout linearLayout = new LinearLayout(this);
+        linearLayout.setOrientation(LinearLayout.VERTICAL);
+
+        findViewById(R.id.loadingPanelStop).setVisibility(View.VISIBLE);
+        final ImageView pictureView = new ImageView(this);
+        Bitmap bitmap = BitmapFactory.decodeFile(picture.getFilePath());
+        bitmap = PictureGetter.fixOrientation(bitmap, orientation);
+        pictureView.setImageBitmap(bitmap);
+
+        TextView textView = new TextView(this);
+        textView.setText(picture.caption());
+
+        //adds inner views to layout
+        linearLayout.addView(pictureView);
+        linearLayout.addView(textView);
+        scrollView.addView(linearLayout);
+
+        AlertDialog.Builder builder = new AlertDialog.Builder(this);
+        builder.setTitle("Image and Caption");
+        //overlays layout on builder
+        builder.setView(scrollView);
+
+        final AlertDialog dialog = builder.show();
+        //listener added at end to allow onClick to access the dialog variable to dismiss popup
+        //on tap
+        pictureView.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                findViewById(R.id.loadingPanelStop).setVisibility(View.GONE);
+                dialog.dismiss();
+            }
+        });
+
+        dialog.setOnKeyListener(new Dialog.OnKeyListener() {
+
+            @Override
+            public boolean onKey(DialogInterface arg0, int keyCode,
+                                 KeyEvent event) {
+                if (keyCode == KeyEvent.KEYCODE_BACK) {
+                    findViewById(R.id.loadingPanelStop).setVisibility(View.GONE);
+                    dialog.dismiss();
+                }
+                return true;
+            }
+        });
+
+    }
+
+    /**
+     * When this activity returns from another, this function is called.
+     * <br/>
+     * Currently, if the <code>requestCode</code> is
+     * 1, or <code>AUDIO_REQUEST_CODE</code>, then this activity
+     * is receiving text recorded by Android's voice to text functionality, and appends this to
+     * the text field for taking notes.
+     * <br/>
+     * <br/>
+     * If the <code>requestCode</code> is 2, or <code>OLD_DATE_TIME_REQUEST_CODE</code>,
+     * then this activity is receiving the new date and time from the
+     * <code>OldDateTimePickerActivity</code> (which is only called from API's below 24.)
+     *
+     * @param requestCode The request code that was sent in an <code>Intent</code>.
+     * @param resultCode  The result code received from the <code>Intent</code> that was sent.
+     * @param intent      The <code>Intent</code> that was originally sent.
+     */
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent intent) {
+        super.onActivityResult(requestCode, resultCode, intent);
+        if (resultCode == RESULT_OK) {
+            ArrayList<String> speech;
+            if (requestCode == AUDIO_REQUEST_CODE) {
+                speech = intent.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS);
+                String resultSpeech = speech.get(0);
+                noteField.append(resultSpeech);
+            } else if (requestCode == OLD_DATE_TIME_REQUEST_CODE) {
+                /*Currently, the default values for the times are all zeros. There shouldn't
+                be a reason to change this, since the date/time pickers return a
+                resultCode of RESULT_CANCELLED. Therefore this code should only be
+                reached when the intent is filled with the date/time information.*/
+                int year = intent.getIntExtra("YEAR", 0);
+                int month = intent.getIntExtra("MONTH", 0);
+                int date = intent.getIntExtra("DATE", 0);
+                int hour = intent.getIntExtra("HOUR", 0);
+                int minute = intent.getIntExtra("MINUTE", 0);
+
+                updateTimeField(year, month, date, hour, minute);
+            } else if (requestCode == GEOLOCATION_REQUEST_CODE) {
+                double longitude = intent.getDoubleExtra("LONGITUDE", 0.0);
+                double latitude = intent.getDoubleExtra("LATITUDE", 0.0);
+                updateGeolocationField(longitude, latitude);
+                findViewById(R.id.loadingPanelStop).setVisibility(View.GONE);
+            }
+        }
+    }
+
+    /**
+     * Converts the <code>time</code> of the <code>Stop</code> to a readable timestamp,
+     * then populates the <code>TextView</code> field with it.
+     */
+    private void populateTime() {
+        long time = stop.getTime();
+
+        Calendar calendar = Calendar.getInstance();
+        calendar.setTimeInMillis(time);
+
+        int year = calendar.get(Calendar.YEAR);
+        int month = calendar.get(Calendar.MONTH) + 1; //January is 1
+        int day = calendar.get(Calendar.DAY_OF_MONTH);
+
+        int hour = calendar.get(Calendar.HOUR);
+        if (hour == 0)   //calendar represents noon and midnight with 0.
+            hour = 12;
+        int ampm = calendar.get(Calendar.AM_PM);
+        String ampmText = (ampm == Calendar.AM ? "am" : "pm");
+        int minute = calendar.get(Calendar.MINUTE);
+
+        DecimalFormat df = new DecimalFormat("00");
+        String dateText = "" + df.format(month) + "/" + df.format(day) + "/" + year;
+        String timeText = "" + hour + ":" + df.format(minute) + ampmText;
+        String dateTime = timeText + " " + dateText;
+
+        TextView field = findViewById(R.id.dateTime);
+        field.setText(dateTime);
+    }
+
+    /**
+     * Converts the <code>longitude</code> and <code>latitude</code> attributes from the
+     * <code>Stop</code> to a readable format for users. If both
+     * <code>longitude</code> and <code>latitude</code> are 0, this method does nothing.
+     */
+    private void populateGeolocation() {
+        DecimalFormat df = new DecimalFormat("#0.0000");
+
+        double longitude = stop.getLongitude();
+        double latitude = stop.getLatitude();
+
+        if (longitude == 0 && latitude == 0)
+            return;
+
+        String longDir = (longitude > 0 ? "E" : "W");
+        String latDir = (latitude > 0 ? "N" : "S");
+
+        longitude = Math.abs(longitude);
+        latitude = Math.abs(latitude);
+
+        String fullCoordinates = "" + df.format(latitude) + latDir + ", " + df.format(longitude) + longDir;
+
+        TextView field = findViewById(R.id.coords);
+        field.setText(fullCoordinates);
+    }
+
+    /**
+     * Checks the API of the current Android system. Sends the user to one of two functions,
+     * one that incorporates date and time pickers available in API 24 and on. Otherwise it
+     * will send the user to functions incorporating handmade date and time pickers.
+     *
+     * @param view The <code>View</code> that calls this function.
+     */
+    public void updateDate(View view) {
+        if (Build.VERSION.SDK_INT >= 24) {
+            updateDateNew();
+        } else {
+            updateDateOld();
+        }
+    }
+
+    /**
+     * Opens the Android <code>DatePicker</code> set to the present date, allowing the user
+     * to select their updated date. Sends the information to <code>updateTimeNew</code>
+     * which will finish updating the <code>time</code> of the <code>Stop</code>.
+     * <br/>
+     * Will only be called if the Android device is API level 24 or above.
+     */
+    @TargetApi(24)
+    private void updateDateNew() {
+        Calendar calendar = Calendar.getInstance();
+
+        int year = calendar.get(Calendar.YEAR);
+        int month = calendar.get(Calendar.MONTH);
+        int date = calendar.get(Calendar.DAY_OF_MONTH);
+
+        DatePickerDialog datePickerDialog = new DatePickerDialog(this,
+                new DatePickerDialog.OnDateSetListener() {
+                    @Override
+                    public void onDateSet(DatePicker view, int year, int month, int dayOfMonth) {
+                        updateTimeNew(year, month, dayOfMonth);
+                    }
+                }, year, month, date);
+        datePickerDialog.show();
+    }
+
+    /**
+     * Opens the Android <code>TimePicker</code> set to the present time, allowing the user to
+     * select their updated time. Receives the updated <code>year, month, </code> and
+     * <code>date</code> from the <code>updateDateNew</code> and will update the <code>time</code>
+     * of the <code>Stop</code>.
+     *
+     * @param year  The updated year.
+     * @param month The updated month.
+     * @param date  The updated date.
+     */
+    @TargetApi(24)
+    private void updateTimeNew(final int year, final int month, final int date) {
+        Calendar calendar = Calendar.getInstance();
+
+        int hour = calendar.get(Calendar.HOUR_OF_DAY);
+        int minute = calendar.get(Calendar.MINUTE);
+
+        TimePickerDialog timePickerDialog = new TimePickerDialog(this,
+                new TimePickerDialog.OnTimeSetListener() {
+                    @Override
+                    public void onTimeSet(TimePicker view, int hourOfDay, int minute) {
+                        updateTimeField(year, month, date, hourOfDay, minute);
+                    }
+                }, hour, minute, false);
+        timePickerDialog.show();
+    }
+
+    /**
+     * Opens dialog box for setting the an updated date. Made for systems of API
+     * less than 23.
+     */
+    private void updateDateOld() {
+        Intent intent = new Intent(this, OldDatePickerActivity.class);
+        startActivityForResult(intent, OLD_DATE_TIME_REQUEST_CODE);
+    }
+
+    /**
+     * Takes all the information for the new date/time and converts it to milliseconds, then updates
+     * the <code>time</code> attribute of this <code>Stop</code>. Called from all API's,
+     * not just above or below 24.
+     *
+     * @param year      The year to be updated to.
+     * @param month     The month to be updated to.
+     * @param date      The day of the month to be updated to.
+     * @param hourOfDay The hour, from 0 to 23, to update to.
+     * @param minute    The minute to update to.
+     */
+    private void updateTimeField(int year, int month, int date, int hourOfDay, int minute) {
+        Calendar calendar = Calendar.getInstance();
+        calendar.set(Calendar.YEAR, year);
+        calendar.set(Calendar.MONTH, month);
+        calendar.set(Calendar.DAY_OF_MONTH, date);
+        calendar.set(Calendar.HOUR_OF_DAY, hourOfDay);
+        calendar.set(Calendar.MINUTE, minute);
+
+        long newTime = calendar.getTimeInMillis();
+        stop.setTime(newTime);
+        populateTime();
+    }
+
+    /**
+     * Sends the user to the <code>GeolocationActivity</code>, where the coordinates of the
+     * current <code>Stop</code> will be updated.
+     *
+     * @param view The <code>View</code> that calls this function.
+     */
+    public void updateGeolocation(View view) {
+        Intent intent = new Intent(this, GeolocationActivity.class);
+        startActivityForResult(intent, GEOLOCATION_REQUEST_CODE);
+    }
+
+    /**
+     * Called when this <code>Activity</code> is returned to from the
+     * <code>GeolocationActivity</code> to update the <code>Stop</code>'s attributes for
+     * <code>longitude</code> and <code>latitude</code>.
+     *
+     * @param longitude The new <code>longitude</code> from the <code>GeolocationActivity</code>.
+     * @param latitude  The new <code>latitude</code> from the <code>GeolocationActivity</code>.
+     */
+    private void updateGeolocationField(double longitude, double latitude) {
+        stop.setLongitude(longitude);
+        stop.setLatitude(latitude);
+        populateGeolocation();
+    }
+
+    /**
+     * Linked to the text field for note taking. Opens Android's microphone for voice to text
+     * recognition. Uses <code>AUDIO_REQUEST_CODE</code> for its intent.
+     *
+     * @param view The <code>View</code> that calls this function.
+     */
+    public void getTextFromVoice(View view) {
+        String DIALOG_TEXT = "Talk now";
+        Intent intent = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
+        intent.putExtra(RecognizerIntent.EXTRA_PROMPT, DIALOG_TEXT);
+        intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL,
+                RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
+        intent.putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, AUDIO_REQUEST_CODE);
+        intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE, "en-US");
+        startActivityForResult(intent, AUDIO_REQUEST_CODE);
+    }
+
+    /**
+     * Deletes the current <code>Stop</code> data, and removes its data from the database. Returns
+     * the user to the <code>NotebookActivity</code>.
+     *
+     * @param view The <code>View</code> that calls this function.
+     */
+    public void delete(View view) {
+
+        AlertDialog.Builder builder = new AlertDialog.Builder(this);
+        builder.setCancelable(true);
+        builder.setTitle("Delete Stop");
+        builder.setMessage("Are you sure you'd like to delete this Stop?");
+
+        //add ok/cancel functionality
+        builder.setPositiveButton("Yes", new DialogInterface.OnClickListener() {
+            @Override
+            public void onClick(DialogInterface dialog, int which) {
+
+                viewModel.delete(stop);
+                onBackPressed();
+            }
+        });
+        builder.setNegativeButton("No", new DialogInterface.OnClickListener() {
+            @Override
+            public void onClick(DialogInterface dialog, int which) {
+                dialog.cancel();
+            }
+        });
+
+        builder.show();
+    }
+
+    /**
+     * Saves the information from the current <code>Stop</code> and commits it to the database.
+     * Returns the user to the <code>NotebookActivity</code>.
+     *
+     * @param view The <code>View</code> that calls this function.
+     */
+    public void save(View view) {
+        stop.setNotes(noteField.getText().toString());
+        viewModel.updateSynchronously(stop);
+        onBackPressed();
+    }
+
+    /**
+     * Sends the user to the <code>CaptionActivity</code>, which opens the camera app, and allows
+     * them to take a photo and caption it. Calls the <code>PermissionUtility</code> to
+     * ensure the user has granted permissions to use the camera and save to external
+     * storage before sending the <code>Intent</code>.
+     */
+    private void openCaption() {
+        if (!PermissionsUtility.getPermissions(this,
+                PermissionsUtility.CAMERA | PermissionsUtility.EXTERNAL_STORAGE))
+            return;
+        Intent intent = new Intent(this, CaptionActivity.class);
+        intent.putExtra(PARENT_UNIX, stop.getUnixTime());
+        startActivity(intent);
+    }
+
+
+}

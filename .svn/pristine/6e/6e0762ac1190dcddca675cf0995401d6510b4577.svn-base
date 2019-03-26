@@ -1,0 +1,16 @@
+<menu xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    tools:context="com.example.fieldnotes.activities.MainActivity">
+    <item
+        android:id="@+id/action_delete"
+        android:title="@string/action_delete"/>
+    <item
+        android:id="@+id/action_rename"
+        android:title="@string/action_rename"/>
+    <item
+        android:id="@+id/action_reorder"
+        android:title="@string/action_reorder_name" />
+    <item
+        android:id="@+id/action_export"
+        android:title="@string/action_export_notebook" />
+</menu>

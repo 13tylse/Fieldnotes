@@ -1,0 +1,181 @@
+package com.example.fieldnotes.activities;
+
+/*
+DEVELOPER NOTES:
+
+When developing the app, we wanted it to be able to run on any Android device you could
+find, that is API 15. Starting with API 24, there's some nice dialog building functions that
+open date and time pickers in only a few lines of code. The popups are still available in the
+older API's, it just takes many more lines of code. The Stop Activity is already very large, at
+about 700 lines of code, so we did not want to add another 100 to it, just for date/time
+pickers dedicated to older API's.
+
+There isn't anything really Earth-shattering here. The only thing of import is really why we
+made it a separate activity, which is detailed above.
+
+The code is pretty simple: boiler plate, date/time formatting, packing intents for the parent
+activity. It's really nothing too extravagant, just verbose.
+ */
+
+import android.app.DatePickerDialog;
+import android.app.Dialog;
+import android.app.TimePickerDialog;
+import android.content.DialogInterface;
+import android.content.Intent;
+import android.os.Bundle;
+import android.support.v7.app.AppCompatActivity;
+import android.widget.DatePicker;
+import android.widget.TimePicker;
+
+import com.example.fieldnotes.R;
+
+import java.util.Calendar;
+
+/**
+ * This is the <code>Activity</code> started when the user wants to select
+ * a new date and time for a <code>Stop</code>, but has API lower than 24.
+ * The screen is completely blank, but upon creation, displays a
+ * <code>DatePickerDialog</code> popup. Upon selecting the date and clicking "Okay,"
+ * another popup, <code>TimePickerDialog</code>, will be displayed to the user.
+ * Then the new date and time is returned to the <code>StopActivity</code>.
+ * If the user hits "Cancel," they will still be returned to the <code>StopActivity</code>.
+ * <p>
+ * The user should never see the blank screen, but currently the physical back button of the
+ * phone returns the user to it.
+ */
+public class OldDatePickerActivity extends AppCompatActivity {
+
+    private static final int DATE_DIALOG_ID = 0;
+    private static final int TIME_DIALOG_ID = 1;
+
+    private int year;
+    private int month;
+    private int date;
+    private int hour;
+    private int minute;
+    //A date set listener that sets the new year, month, and date.
+    private DatePickerDialog.OnDateSetListener dateSetListener =
+            new DatePickerDialog.OnDateSetListener() {
+                @Override
+                public void onDateSet(DatePicker datePicker, int y, int m, int d) {
+                    year = y;
+                    month = m;
+                    date = d;
+
+                    showDialog(TIME_DIALOG_ID);
+                }
+            };
+    //A time set listener that sets the new hour and minute.
+    private TimePickerDialog.OnTimeSetListener timeSetListener =
+            new TimePickerDialog.OnTimeSetListener() {
+                @Override
+                public void onTimeSet(TimePicker timePicker, int h, int m) {
+                    hour = h;
+                    minute = m;
+
+                    returnNewTime();
+                }
+            };
+
+    /**
+     * Calls the parent <code>onCreate</code> method, and opens the popup for the date picker.
+     *
+     * @param savedInstanceState The data stored by the app when it is minimized, brought out
+     *                           of focus, etc. so the app can restore its data.
+     */
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        setContentView(R.layout.activity_old_date_picker);
+
+        showDialog(DATE_DIALOG_ID);
+    }
+
+    /**
+     * Creates and displays either a <code>DatePickerDialog</code> or a <code>TimePicker</code>
+     * depending on the <code>id</code> passed.
+     * <br/>
+     * If the <code>id</code> is 0, or <code>DATE_DIALOG_CODE</code>, then a
+     * <code>DatePickerDialog</code> popup is shown.
+     * <br/>
+     * If the <code>id</code> is 1, or <code>TIME_DIALOG_CODE</code>, then a
+     * <code>TimePickerDialog</code> popup is shown.
+     *
+     * @param id Determines the type of popup to display.
+     * @return A popup based on the <code>id passed</code>, to select either the
+     * date or time.
+     */
+    @Override
+    protected Dialog onCreateDialog(int id) {
+        if (id == DATE_DIALOG_ID) {
+            Calendar calendar = Calendar.getInstance();
+
+            int y = calendar.get(Calendar.YEAR);
+            int m = calendar.get(Calendar.MONTH);
+            int d = calendar.get(Calendar.DAY_OF_MONTH);
+
+            DatePickerDialog dpd = new DatePickerDialog(this, dateSetListener, y, m, d);
+
+            dpd.setOnCancelListener(new DialogInterface.OnCancelListener() {
+                @Override
+                public void onCancel(DialogInterface dialogInterface) {
+                    cancel();
+                }
+            });
+            return dpd;
+
+        } else if (id == TIME_DIALOG_ID) {
+            Calendar calendar = Calendar.getInstance();
+
+            int h = calendar.get(Calendar.HOUR_OF_DAY);
+            int m = calendar.get(Calendar.MINUTE);
+
+            TimePickerDialog tpd = new TimePickerDialog(this, timeSetListener, h, m, false);
+
+            tpd.setOnCancelListener(new DialogInterface.OnCancelListener() {
+                @Override
+                public void onCancel(DialogInterface dialogInterface) {
+                    cancel();
+                }
+            });
+            return tpd;
+        }
+        return null;
+    }
+
+    /**
+     * When the user hits the physical back button on their phone, this will call the
+     * the <code>cancel</code> method, to insure that the <code>resultCode</code> is correctly
+     * set to <code>RESULT_CANCELLED</code>.
+     */
+    @Override
+    public void onBackPressed() {
+        cancel();
+    }
+
+    /**
+     * Stores the new <code>year</code>, <code>month</code>, <code>date</code>, <code>hour</code>,
+     * and <code>minute</code> in an <code>Intent</code>, then ends the <code>Activity</code>.
+     * Called when the user successfully chooses both a date and time.
+     */
+    private void returnNewTime() {
+        Intent intent = new Intent();
+        intent.putExtra("YEAR", year);
+        intent.putExtra("MONTH", month);
+        intent.putExtra("DATE", date);
+        intent.putExtra("HOUR", hour);
+        intent.putExtra("MINUTE", minute);
+        setResult(RESULT_OK, intent);
+        finish();
+    }
+
+    /**
+     * Creates an <code>Intent</code> stating that the user cancelled out of either the
+     * date or time picker, then ends the <code>Activity</code>.
+     */
+    private void cancel() {
+        Intent intent = new Intent();
+        setResult(RESULT_CANCELED, intent);
+        finish();
+    }
+}

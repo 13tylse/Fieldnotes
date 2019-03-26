@@ -1,0 +1,21 @@
+<resources>
+    <string name="app_name">Fieldnotes</string>
+    <string name="action_reorder_name">Sort by Name</string>
+    <string name="action_reorder_date">Sort by Date</string>
+    <string name="action_delete">Delete</string>
+    <string name="action_rename">Rename</string>
+    <string name="title_activity_notebook">NotebookActivity</string>
+    <string name="title_activity_stop">Stop</string>
+    <string name="discard">Discard</string>
+    <string name="save">Save</string>
+    <string name="camera">Camera</string>
+    <string name="delete">Delete</string>
+    <string name="enter">Enter</string>
+    <string name="title_activity_caption">Picture Taken</string>
+    <string name="date_time">Date/Time</string>
+    <string name="coordinates">Coordinates</string>
+    <string name="wait_for_geolocation">Please wait while your coordinates are received.</string>
+    <string name="save_and_exit">SAVE AND EXIT</string>
+    <string name="save_and_take_another">Save and Take Another</string>
+    <string name="enter_your_caption">Enter your caption.</string>
+</resources>

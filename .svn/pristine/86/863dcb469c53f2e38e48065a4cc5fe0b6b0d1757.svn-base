@@ -1,0 +1,177 @@
+package com.example.fieldnotes.database;
+
+import android.app.Application;
+import android.arch.lifecycle.AndroidViewModel;
+import android.arch.lifecycle.LiveData;
+
+import com.example.fieldnotes.database.FieldNotesRepo;
+import com.example.fieldnotes.java.Notebook;
+import com.example.fieldnotes.java.Picture;
+import com.example.fieldnotes.java.Stop;
+
+import java.util.ArrayList;
+import java.util.List;
+
+/**
+ * This class serves the purpose of extending the <code>AndroidViewModel</code>, which acts as a
+ * method of communicating between the UI and the repository. It holds UI data in a
+ * lifecycle-conscious way that withstands changes in configuration. Within it are public insert
+ * and getter methods so that implementation of the <code>repository</code> and <code>dao</code>
+ * classes can remain private.
+ *
+ * @author Tyler Seidel (2019)
+ */
+public class FieldNotesViewModel extends AndroidViewModel {
+
+    ////////////////////////////////////////////////////////////////////////////////////////////////
+    ////                                  CLASS VARIABLES                                         //
+    ////////////////////////////////////////////////////////////////////////////////////////////////
+
+    private FieldNotesRepo repo;
+    private LiveData<List<Notebook>> notebooks;
+    private LiveData<List<Stop>> stops;
+    private LiveData<List<Picture>> pictures;
+
+
+    ////////////////////////////////////////////////////////////////////////////////////////////////
+    ////                                   CONSTRUCTORS                                           //
+    ////////////////////////////////////////////////////////////////////////////////////////////////
+    /**
+     * Default constructor, which initializes member fields using an
+     * <code>Application</code> object.
+     */
+    public FieldNotesViewModel(Application application) {
+        super(application);
+        repo = new FieldNotesRepo(application);
+        notebooks = repo.getAllNotebooks();
+        stops = repo.getAllStops();
+        pictures = repo.getAllPictures();
+    }
+
+
+    ////////////////////////////////////////////////////////////////////////////////////////////////
+    ////                         NOTEBOOK-RELATED METHODS/CLASSES                                 //
+    ////////////////////////////////////////////////////////////////////////////////////////////////
+    /**
+     * Get a list of <code>Notebook</code> objects.
+     */
+    public LiveData<List<Notebook>> getNotebooks(){return notebooks;}
+
+    /**
+     * Search the Notebooks list for and return a <code>Notebook</code> specified by the given
+     * unix time, or null if no such <code>Notebook</code> exists.
+     */
+    public Notebook getNotebookByUnixTime(long unixTime) { return repo.getNotebook(unixTime); }
+
+    /**
+     * retrieve a <code>Notebook</code> from the <code>LiveData<List<Notebook></code> object
+     * by a given index.
+     */
+    public Notebook getNotebookByIndex(int index) { return notebooks.getValue().get(index); }
+
+    /**
+     * Public method for use in app to insert a <code>Notebook</code> into the database through use
+     * of a <code>FieldNotesRepo</code> object.
+     */
+    public void insert(Notebook notebook){ repo.insert(notebook); }
+
+    /**
+     * Public method for use in app to delete a <code>Notebook</code> from the database through use
+     * of a <code>FieldNotesRepo</code> object.
+     */
+    public void delete(Notebook notebook) { repo.delete(notebook); }
+
+    /**
+     * public method for use in app to update a <code>Notebook</code> within the database through use
+     * of a <code>FieldNotesRepo</code> object.
+     */
+    public void update(Notebook notebook) { repo.update(notebook); }
+
+
+    ////////////////////////////////////////////////////////////////////////////////////////////////
+    ////                          STOP-RELATED METHODS/CLASSES                                    //
+    ////////////////////////////////////////////////////////////////////////////////////////////////
+    /**
+     * Get a list of <code>Stop</code> objects.
+     */
+    public LiveData<List<Stop>> getStops(){return stops;}
+
+    /**
+     * Search the Stops list for and return a <code>Stop</code> specified by the given unix time, or
+     * null if no such <code>Stop</code> exists.
+     */
+    public Stop getStopByUnixTime(long unixTime) {
+        for (int i = 0; i < stops.getValue().size(); i++)
+        {
+            Stop s = stops.getValue().get(i);
+            if (s.getUnixTime() == unixTime)
+                return s;
+        }
+        return null;
+    }
+
+    /**
+     * Given a <code>Notebook</code>, call the <code>FieldNotesRepo</code>
+     */
+    public LiveData<List<Stop>> getAllStopsByNotebook(Notebook notebook) {
+        return repo.getAllStopsByNotebook(notebook);
+    }
+
+    /**
+     * retrieve a <code>Stop</code> from the <code>LiveData<List<Stop></code> object
+     * by a given index.
+     */
+    public Notebook getStopByIndex(int index)
+    {
+        return notebooks.getValue().get(index);
+    }
+
+    /**
+     * Public method for use in app to insert a <code>Stop</code> into the database through use
+     * of a <code>FieldNotesRepo</code> object.
+     */
+    public void insert(Stop stop){repo.insert(stop);}
+
+    /**
+     * Public method for use in app to delete a <code>Stop</code> from the database through use
+     * of a <code>FieldNotesRepo</code> object.
+     */
+    public void delete(Stop stop) {repo.delete(stop);}
+
+    /**
+     * Public method for use in app to update a <code>Stop</code> within the database through use
+     * of a <code>FieldNotesRepo</code> object.
+     */
+    public void update(Stop stop) {repo.update(stop);}
+
+    ////////////////////////////////////////////////////////////////////////////////////////////////
+    ////                         PICTURE-RELATED METHODS/CLASSES                                  //
+    ////////////////////////////////////////////////////////////////////////////////////////////////
+    /**
+     * Get a list of <code>Picture</code> objects.
+     */
+    public LiveData<List<Picture>> getPictures(){ return pictures; }
+
+    /**
+     * Search the pictures list for and return a <code>Picture</code> specified by the given
+     * unix time, or null if no such <code>Picture</code> exists.
+     */
+    public Picture getPictureByUnixTime(long unixTime) {
+        for (Picture p : (List<Picture>) pictures)
+        {
+            if (p.getUnixTime() == unixTime)
+                return p;
+        }
+        return null;
+    }
+
+    /**
+     * Wrapper method for the <code>FieldNotesRepo</code> class's
+     * <code>insert(Picture)</code> method.
+     */
+    public void insert(Picture picture) { repo.insert(picture); }
+
+
+
+
+}

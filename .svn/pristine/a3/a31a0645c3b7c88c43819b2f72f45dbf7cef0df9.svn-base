@@ -1,0 +1,135 @@
+<?xml version="1.0" encoding="utf-8"?>
+
+<!--
+DEVELOPER NOTES:
+
+This is where we'll discuss more than just the file, but the entire project itself.
+
+SQLITE AND ROOM
+===============
+
+For starters, we used a SQLite database with Room, which is an extra layer of abstraction on top
+of the SQLite database recommended by Google. The tables are created by marking the container
+classes with tags such as @PrimaryKey and @ColumnInfo.
+
+There are also Dao's which take place of Database Interfaces. Here you'll find a list of methods
+that can be called by the Repository, which are then called by the ViewModel.
+To make SQL statements, you preface the method definition with a tag containing the statement,
+such as:
+
+@Query(SELECT * FROM Notebooks_table)
+List<Notebook> getAllNotebooks();
+
+It's a very intuitive library to use, and we learned it through this tutorial:
+https://codelabs.developers.google.com/codelabs/android-room-with-a-view/#0
+
+ASYNCHRONOUS/SYNCHRONOUS
+========================
+
+One thing we need to mention is our issues with asynchronous queries.
+
+Room implements a system of committing and retrieving data from the database in a
+dedicated thread. This is very nice for larger applications, but our application is so
+small and fast that it was trying to access the data before the database thread could
+finish committing it, or try to use the data from a query before it could have time
+to finish returning it. These are asynchronous tasks. When querying the database
+asynchronously, it returns LiveData, which needs to be implemented in an observer.
+
+We scrapped most of this code, but it may still exist in places where it does not cause issues.
+We would recommend using only Synchronous queries, which do not return LiveData.
+Synchronous simply means that the queries are performed on the main UI thread, but this causes
+no issues, since the data is so small.
+
+UNIX TIME
+=========
+
+All the database tables have Primary Keys that are determined from the Unix Time, or
+rather System Time. When the objects are created, we call System.currentTimeMillis() which
+returns us a long that we store in the database as a Primary Key. This is much simpler than
+trying to generate unique PK's that won't cause any issues.
+
+STORING PICTURES
+================
+
+When the user takes a photo, it is saved in a subfolder inside the default photos folder called
+"Fieldnotes." The database stores the ABSOLUTE FILEPATH of the picture, which is stored
+after the user takes a photo. This is much more efficient than trying to encode the picture into
+the database, which would take a few seconds per picture. These filepaths are used in the
+StopActivity to load previews for the photos and then the whole enlarged Bitmap.
+
+-->
+
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.example.fieldnotes">
+
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
+    <uses-permission android:name="android.permission.CAMERA" />
+
+    <uses-feature android:name="android.hardware.camera" />
+    <uses-feature android:name="android.hardware.camera.autofocus" />
+
+    <application
+        android:allowBackup="false"
+        android:icon="@mipmap/ic_icon"
+        android:label="@string/app_name"
+        android:roundIcon="@mipmap/ic_roundicon"
+        android:supportsRtl="true"
+        android:theme="@style/AppTheme">
+        <activity
+            android:name=".activities.ExportActivity"
+            android:label="@string/title_activity_export"
+            android:parentActivityName=".activities.MainActivity"
+            android:theme="@style/AppTheme.NoActionBar">
+            <meta-data
+                android:name="android.support.PARENT_ACTIVITY"
+                android:value="com.example.fieldnotes.activities.MainActivity" />
+        </activity>
+        <activity android:name=".activities.GeolocationActivity" />
+        <activity android:name=".activities.OldDatePickerActivity" />
+        <activity
+            android:name=".activities.MainActivity"
+            android:label="@string/app_name"
+            android:screenOrientation="portrait"
+            android:theme="@style/AppTheme.NoActionBar">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+        <activity
+            android:name=".activities.NotebookActivity"
+            android:label="@string/title_activity_notebook"
+            android:parentActivityName=".activities.MainActivity"
+            android:screenOrientation="portrait"
+            android:theme="@style/AppTheme.NoActionBar">
+            <meta-data
+                android:name="android.support.PARENT_ACTIVITY"
+                android:value="com.example.fieldnotes.activities.MainActivity" />
+        </activity>
+        <activity
+            android:name=".activities.StopActivity"
+            android:label="@string/title_activity_stop"
+            android:parentActivityName=".activities.NotebookActivity"
+            android:screenOrientation="portrait"
+            android:theme="@style/AppTheme.NoActionBar"
+            android:windowSoftInputMode="stateUnchanged">
+            <meta-data
+                android:name="android.support.PARENT_ACTIVITY"
+                android:value="com.example.fieldnotes.activities.NotebookActivity" />
+        </activity>
+        <activity
+            android:name=".activities.CaptionActivity"
+            android:label="@string/title_activity_caption"
+            android:parentActivityName=".activities.StopActivity"
+            android:theme="@style/AppTheme.NoActionBar">
+            <meta-data
+                android:name="android.support.PARENT_ACTIVITY"
+                android:value="com.example.fieldnotes.activities.StopActivity" />
+        </activity>
+    </application>
+
+</manifest>

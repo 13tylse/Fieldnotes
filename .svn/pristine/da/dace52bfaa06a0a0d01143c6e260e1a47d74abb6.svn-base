@@ -1,0 +1,192 @@
+package com.example.fieldnotes.utilities;
+
+import android.app.Activity;
+import android.database.Cursor;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
+import android.graphics.Matrix;
+import android.media.ExifInterface;
+import android.provider.MediaStore;
+import android.util.Log;
+
+import java.io.IOException;
+import java.util.ArrayList;
+
+/**
+ * A utility class for all picture functionality.
+ */
+public class PictureGetter {
+
+    private static final String TAG = "PictureGetterUtility";
+
+    /**
+     * A function that returns the last image taken from the camera in the form of a
+     * <code>Bitmap</code>. For testing purposes.
+     * <br/>
+     * Example usage:
+     * <pre>
+     * Bitmap bitmap = getLastPicture(this);
+     * imageView.setImageBitmap(bitmap);
+     * </pre>
+     *
+     * @param activity The <code>Activity</code> calling this function.
+     * @return The last picture taken by the camera, in the form of a <code>Bitmap</code>.
+     */
+    public static Bitmap getLastPicture(Activity activity) {
+        String res = null;
+        Cursor cursor = null;
+        try {
+            String[] imageColumns = {MediaStore.Images.Media._ID, MediaStore.Images.Media.DATA};
+            String orderBy = MediaStore.Images.Media._ID + " DESC";
+            cursor = activity.getContentResolver().query(MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+                    imageColumns, null, null, orderBy);
+            if (cursor.moveToFirst()) {
+                int column_index = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DATA);
+                res = cursor.getString(column_index);
+            }
+        } catch (Exception e) {
+            Log.e(TAG, e.getMessage());
+        } finally {
+            if (cursor != null)
+                cursor.close();
+        }
+
+        Bitmap bitmap = BitmapFactory.decodeFile(res);
+        if (bitmap == null)
+            return null;
+        return bitmap;
+    }
+
+    /**
+     * A function that returns the last n images taken from the camera in the form of
+     * an <code>ArrayList</code> of <code>Bitmaps</code>, where n is the number of
+     * pictures wanted. For testing purposes.
+     *
+     * @param activity         The <code>Activity</code> calling this function.
+     * @param numberOfPictures The number of pictures the user wants to be returned.
+     * @return The last picture taken by the camera, in the form of a <code>Bitmap</code>.
+     */
+    public static ArrayList<Bitmap> getLastNPictures(Activity activity, int numberOfPictures) {
+        ArrayList<Bitmap> bitmaps = new ArrayList<>();
+        ArrayList<String> res = new ArrayList<>();
+        Cursor cursor = null;
+
+        try {
+
+            String[] imageColumns = {MediaStore.Images.Media._ID, MediaStore.Images.Media.DATA};
+            String orderBy = MediaStore.Images.Media._ID + " DESC";
+            cursor = activity.getContentResolver().query(MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+                    imageColumns, null, null, orderBy);
+            if (cursor.moveToFirst()) {
+                int column_index = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DATA);
+                res.add(cursor.getString(column_index));
+            }
+
+            int i = 1;
+
+            while (cursor.moveToNext() && i < numberOfPictures) {
+                int column_index = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DATA);
+                res.add(cursor.getString(column_index));
+                i++;
+            }
+
+        } catch (Exception e) {
+            Log.e(TAG, e.getMessage());
+        } finally {
+            if (cursor != null)
+                cursor.close();
+        }
+
+        Bitmap bitmap;
+        for (int i = 0; i < res.size(); i++) {
+            int orientation = getOrientation(res.get(i));
+            bitmap = BitmapFactory.decodeFile(res.get(i));
+            bitmap = fixOrientation(bitmap, orientation);
+
+            if (bitmap != null)
+                bitmaps.add(bitmap);
+        }
+
+        return bitmaps;
+    }
+
+    public static ArrayList<String> getLastNPicturePaths(Activity activity, int numberOfPictures) {
+        ArrayList<String> res = new ArrayList<>();
+        Cursor cursor = null;
+
+        try {
+
+            String[] imageColumns = {MediaStore.Images.Media._ID, MediaStore.Images.Media.DATA};
+            String orderBy = MediaStore.Images.Media._ID + " DESC";
+            cursor = activity.getContentResolver().query(MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+                    imageColumns, null, null, orderBy);
+            if (cursor.moveToFirst()) {
+                int column_index = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DATA);
+                res.add(cursor.getString(column_index));
+            }
+
+            int i = 1;
+
+            while (cursor.moveToNext() && i < numberOfPictures) {
+                int column_index = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DATA);
+                res.add(cursor.getString(column_index));
+                i++;
+            }
+
+        } catch (Exception e) {
+            Log.e(TAG, e.getMessage());
+        } finally {
+            if (cursor != null)
+                cursor.close();
+        }
+
+        return res;
+    }
+
+    /**
+     * Gets the <code>Bitmap</code> from a filepath, then calls <code>fixOrientation</code> to
+     * ensure that it's being displayed without being rotated. (This fixes the issue some
+     * devices have where the photos are unnecessarily rotated.)
+     *
+     * @param filepath The absolute path of the <code>Bitmap</code>.
+     * @return The <code>Bitmap</code> oriented properly.
+     */
+    public static int getOrientation(String filepath) {
+        int orientation = ExifInterface.ORIENTATION_NORMAL;
+        try {
+            ExifInterface exitInterface = new ExifInterface(filepath);
+            orientation = exitInterface.getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL);
+        } catch (IOException ioe) {
+            Log.e(TAG, ioe.getMessage());
+        }
+        return orientation;
+    }
+
+    /**
+     * @param bitmap      The <code>Bitmap</code> to rotate, or ensure is being displayed properly.
+     * @param orientation The current orientation of the <code>Bitmap</code>. (Zero is normal.)
+     * @return The <code>Bitmap</code> oriented properly.
+     */
+    public static Bitmap fixOrientation(Bitmap bitmap, int orientation) {
+        int rotate;
+        switch (orientation) {
+            case ExifInterface.ORIENTATION_ROTATE_270:
+                rotate = 270;
+                break;
+            case ExifInterface.ORIENTATION_ROTATE_180:
+                rotate = 180;
+                break;
+            case ExifInterface.ORIENTATION_ROTATE_90:
+                rotate = 90;
+                break;
+            default:
+                return bitmap;
+        }
+
+        int w = bitmap.getWidth();
+        int h = bitmap.getHeight();
+        Matrix mtx = new Matrix();
+        mtx.postRotate(rotate);
+        return Bitmap.createBitmap(bitmap, 0, 0, w, h, mtx, true);
+    }
+}

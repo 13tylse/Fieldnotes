@@ -1,0 +1,526 @@
+package com.example.fieldnotes.activities;
+
+import android.arch.lifecycle.Observer;
+import android.arch.lifecycle.ViewModelProviders;
+import android.content.DialogInterface;
+import android.content.Intent;
+import android.os.Bundle;
+import android.support.annotation.NonNull;
+import android.support.annotation.Nullable;
+import android.support.design.widget.FloatingActionButton;
+import android.support.v7.app.AlertDialog;
+import android.support.v7.app.AppCompatActivity;
+import android.support.v7.widget.LinearLayoutManager;
+import android.support.v7.widget.RecyclerView;
+import android.support.v7.widget.Toolbar;
+import android.text.InputType;
+import android.view.MotionEvent;
+import android.view.View;
+import android.view.Menu;
+import android.view.MenuItem;
+import android.widget.EditText;
+import android.widget.LinearLayout;
+import android.widget.TextView;
+import android.widget.Toast;
+
+import com.example.fieldnotes.R;
+import com.example.fieldnotes.database.FieldNotesViewModel;
+import com.example.fieldnotes.java.Notebook;
+import com.example.fieldnotes.utilities.KeyboardUtility;
+import com.example.fieldnotes.utilities.PermissionsUtility;
+
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.List;
+
+/**
+ * The main <code>Activity</code> of the app, and the first thing displayed when the app is
+ * started. It contains a <code>RecyclerView</code> of <code>Notebook</code> objects that a user can
+ * access. It also contains a floating action button that allows the creation of a new
+ * <code>Notebook</code> through a pop-up display.
+ *
+ * @author Daniel Kilgallon (2019)
+ * @author Tyler Seidel (2019)
+ */
+public class MainActivity extends AppCompatActivity {
+
+    //constants
+    private static final String THIS_UNIX = "Unix Time";
+
+    //comparator classes for sorting notebooks by name and date
+    private final Comparator<Notebook> nameSort = new Comparator<Notebook>() {
+        @Override
+        public int compare(Notebook o1, Notebook o2) {
+            String name1 = o1.getNotebookName();
+            String name2 = o2.getNotebookName();
+            return name1.compareTo(name2);
+        }
+    };
+    private final Comparator<Notebook> dateSort = new Comparator<Notebook>() {
+        @Override
+        public int compare(Notebook o1, Notebook o2) {
+            long time1 = o1.getUnixTime();
+            long time2 = o2.getUnixTime();
+            if (time1 > time2) {
+                return 1;
+            } else if (time1 < time2) {
+                return -1;
+            } else {
+                return 0;
+            }
+        }
+    };
+
+    private FieldNotesViewModel viewModel;
+    private NotebookViewAdapter adapter;
+
+    //needs to save view where the keyboard is open to close it
+    private View viewWithKeyboard;
+
+    /**
+     * Beyond calling the parent <code>onCreate</code> method, this method calls
+     * the function that populates the <code>adapter</code> of <code>Notebooks</code>.
+     * This function also maps the <code>createNotebookPopup</code> function to the floating
+     * action button.
+     *
+     * @param savedInstanceState The data stored by the app when it is minimized, brought out
+     *                           of focus, etc. so the app can restore its data.
+     */
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        setContentView(R.layout.activity_main);
+        Toolbar toolbar = findViewById(R.id.toolbar);
+        setSupportActionBar(toolbar);
+        FloatingActionButton fab = findViewById(R.id.fab);
+        fab.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                createNotebookPopup();
+            }
+        });
+        PermissionsUtility.getPermissions(this, PermissionsUtility.ALL);
+
+        final RecyclerView notebookView = findViewById(R.id.notebook_view);
+        //listener for onClick of listview of notebooks
+        notebookView.addOnItemTouchListener(new RecyclerView.SimpleOnItemTouchListener() {
+            private float mDownX;
+            private float mDownY;
+            private final float SCROLL_THRESHOLD = 10;
+            private boolean isOnClick;
+
+            /**
+             * Determine which kind of <code>MotionEvent</code> is
+             * being performed
+             *
+             * Two types of movement: taps or scrolling
+             */
+            @Override
+            public boolean onInterceptTouchEvent(@NonNull RecyclerView recyclerView, @NonNull MotionEvent motionEvent) {
+
+                switch (motionEvent.getAction() & MotionEvent.ACTION_MASK) {
+                    case MotionEvent.ACTION_DOWN:
+                        mDownX = motionEvent.getX();
+                        mDownY = motionEvent.getY();
+                        isOnClick = true;
+                        break;
+                    case MotionEvent.ACTION_CANCEL:
+                    case MotionEvent.ACTION_UP:
+                        if (isOnClick) {
+                            LinearLayout layout = (LinearLayout) recyclerView.findChildViewUnder(motionEvent.getX(), motionEvent.getY());
+                            if (layout != null) {
+                                TextView notebookUnix = (TextView) layout.getChildAt(2);
+                                long notebookUnixTime = Long.parseLong(notebookUnix.getText().toString());
+                                openNotebook(notebookUnixTime);
+                            }
+                        }
+                        break;
+                    case MotionEvent.ACTION_MOVE:
+                        if (isOnClick && (Math.abs(mDownX - motionEvent.getX()) > SCROLL_THRESHOLD || Math.abs(mDownY - motionEvent.getY()) > SCROLL_THRESHOLD)) {
+
+                            isOnClick = false;
+                        }
+                        break;
+                    default:
+                        break;
+                }
+                return false;
+            }
+        });
+        adapter = new NotebookViewAdapter(this);
+        notebookView.setAdapter(adapter);
+        notebookView.setLayoutManager(new LinearLayoutManager(this));
+        //gets database object
+        viewModel = ViewModelProviders.of(this).get(FieldNotesViewModel.class);
+
+        //set an observer on the notebook data so the app knows to update the data when changed
+        viewModel.getNotebooks().observe(this, new Observer<List<Notebook>>() {
+            @Override
+            public void onChanged(@Nullable final List<Notebook> notebooks) {
+                // Update the cached copy of the words in the adapter.
+                adapter.setNotebooks(notebooks);
+            }
+        });
+    }
+
+    /**
+     * Inflate the menu, this adds items to the action bar if it is present.
+     *
+     * @param menu the Menu object to show when the user clicks
+     */
+    @Override
+    public boolean onCreateOptionsMenu(Menu menu) {
+        getMenuInflater().inflate(R.menu.menu_main, menu);
+        return true;
+    }
+
+    /**
+     * Handles when items are selected from the drop-down menu.
+     *
+     * @param item The <code>MenuItem</code> clicked by user.
+     * @return False if the <code>item</code> is null. True otherwise.
+     */
+    @Override
+    public boolean onOptionsItemSelected(MenuItem item) {
+        // The action bar will automatically handle clicks on the Home/Up button, so long
+        // as you specify a parent activity in AndroidManifest.xml.
+        int id = item.getItemId();
+
+        //if there are no notebooks then there are no options
+        if (adapter.getItemCount() > 0) {
+            //three menu options: rename, delete, and reorder
+            if (id == R.id.action_rename) {
+                renameNotebooksList();
+            } else if (id == R.id.action_delete) {
+                deleteNotebook();
+            } else if (id == R.id.action_reorder) {
+                reorderNotebook(item);
+            }
+        } else {
+            Toast.makeText(this, "There are no Notebooks!", Toast.LENGTH_SHORT).show();
+        }
+        return super.onOptionsItemSelected(item);
+    }
+
+    /**
+     * Ensures that the keyboard closes when this <code>Activity</code> is brought out of
+     * focus.
+     */
+    @Override
+    protected void onPause() {
+        super.onPause();
+        KeyboardUtility.forceHideKeyboard(this, viewWithKeyboard);
+    }
+
+    /**
+     * Linked to the floating action button. Will display a dialog box with a text field,
+     * asking the user for the name of their new notebook. Once the name is provided, the
+     * <code>createNotebook</code> method is called, passing the name provided by the user.
+     */
+    private void createNotebookPopup() {
+        //boiler-plate for setting up dialog box
+        final AlertDialog.Builder builder = new AlertDialog.Builder(this);
+        builder.setCancelable(true);
+        builder.setTitle("Create Notebook");
+        builder.setMessage("Enter a name for the new Notebook");
+
+        //create text field
+        final EditText nameField = new EditText(this);
+        viewWithKeyboard = nameField;
+        nameField.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_CAP_SENTENCES);
+        builder.setView(nameField);
+
+        //add ok/cancel functionality
+        builder.setPositiveButton(R.string.confirm, new DialogInterface.OnClickListener() {
+            @Override
+            public void onClick(DialogInterface dialog, int which) {
+                if (nameField.getText().toString().length() > 0) {
+                    KeyboardUtility.forceHideKeyboard(MainActivity.this, viewWithKeyboard);
+                    createNotebook(nameField.getText().toString());
+                } else {
+                    Toast.makeText(MainActivity.this, "Please input a valid name", Toast.LENGTH_SHORT).show();
+                }
+            }
+        });
+        builder.setNegativeButton(R.string.cancel, new DialogInterface.OnClickListener() {
+            @Override
+            public void onClick(DialogInterface dialog, int which) {
+                KeyboardUtility.forceHideKeyboard(MainActivity.this, viewWithKeyboard);
+                dialog.cancel();
+            }
+        });
+
+        KeyboardUtility.forceShowKeyboard(this);
+
+        builder.show();
+    }
+
+    /**
+     * Displays a popup with all <code>Notebooks</code> mapped to buttons, and prompts the user to
+     * select the <code>Notebook</code> they want to rename.
+     */
+    private void renameNotebooksList() {
+        final AlertDialog.Builder builder = new AlertDialog.Builder(this);
+        builder.setCancelable(true);
+        builder.setTitle("Choose Notebook to Rename");
+
+        //create listview
+        RecyclerView notebookView = new RecyclerView(this);
+        //listener for onClick of listview of notebooks
+        //listener instead sends to renameNotebookText
+        notebookView.addOnItemTouchListener(new RecyclerView.SimpleOnItemTouchListener() {
+            private float mDownX;
+            private float mDownY;
+            private final float SCROLL_THRESHOLD = 10;
+            private boolean isOnClick;
+
+            @Override
+            public boolean onInterceptTouchEvent(@NonNull RecyclerView recyclerView, @NonNull MotionEvent motionEvent) {
+                switch (motionEvent.getAction() & MotionEvent.ACTION_MASK) {
+                    case MotionEvent.ACTION_DOWN:
+                        mDownX = motionEvent.getX();
+                        mDownY = motionEvent.getY();
+                        isOnClick = true;
+                        break;
+                    case MotionEvent.ACTION_CANCEL:
+                    case MotionEvent.ACTION_UP:
+                        if (isOnClick) {
+                            LinearLayout layout = (LinearLayout) recyclerView.findChildViewUnder(motionEvent.getX(), motionEvent.getY());
+                            if (layout != null) {
+                                TextView notebookUnix = (TextView) layout.getChildAt(2);
+                                renameNotebookText(Long.parseLong(notebookUnix.getText().toString()));
+                            }
+                        }
+                        break;
+                    case MotionEvent.ACTION_MOVE:
+                        if (isOnClick && (Math.abs(mDownX - motionEvent.getX()) > SCROLL_THRESHOLD || Math.abs(mDownY - motionEvent.getY()) > SCROLL_THRESHOLD)) {
+                            isOnClick = false;
+                        }
+                        break;
+                    default:
+                        break;
+                }
+                return false;
+            }
+        });
+
+        final NotebookViewAdapter renameAdapter = new NotebookViewAdapter(this);
+        notebookView.setAdapter(renameAdapter);
+        notebookView.setLayoutManager(new LinearLayoutManager(this));
+        viewModel.getNotebooks().observe(this, new Observer<List<Notebook>>() {
+            @Override
+            public void onChanged(@Nullable final List<Notebook> notebooks) {
+                // Update the cached copy of the words in the adapter.
+                renameAdapter.setNotebooks(notebooks);
+            }
+        });
+
+        builder.setView(notebookView);
+        builder.setNegativeButton(R.string.cancel, new DialogInterface.OnClickListener() {
+            @Override
+            public void onClick(DialogInterface dialog, int which) {
+                dialog.dismiss();
+            }
+        });
+
+        builder.show();
+    }
+
+    /**
+     * Displays a popup prompting the user for the new name for the selected
+     * <code>Notebook</code>.
+     *
+     * @param notebookUnix unix time of selected notebook in string format
+     */
+    private void renameNotebookText(final long notebookUnix) {
+        final AlertDialog.Builder builder = new AlertDialog.Builder(this);
+        builder.setCancelable(true);
+        builder.setTitle("Rename Notebook");
+
+        final Notebook notebook = viewModel.getNotebookByUnixTime(notebookUnix);
+
+        //create text field and auto populate
+        final EditText renameTextField = new EditText(this);
+        renameTextField.append(notebook.getNotebookName());
+        builder.setView(renameTextField);
+
+        builder.setPositiveButton(R.string.confirm, new DialogInterface.OnClickListener() {
+            @Override
+            public void onClick(DialogInterface dialog, int which) {
+                KeyboardUtility.forceHideKeyboard(MainActivity.this, renameTextField);
+                notebook.setNotebookName(renameTextField.getText().toString());
+                viewModel.updateSynchronously(notebook);
+            }
+        });
+        builder.setNegativeButton(R.string.cancel, new DialogInterface.OnClickListener() {
+            @Override
+            public void onClick(DialogInterface dialog, int which) {
+                KeyboardUtility.forceHideKeyboard(MainActivity.this, renameTextField);
+                dialog.dismiss();
+            }
+        });
+
+        KeyboardUtility.forceShowKeyboard(this);
+        builder.show();
+    }
+
+    /**
+     * Displays a popup for the user to select a notebook to delete. Has a confirm dialog
+     * nested inside to confirm.
+     */
+    private void deleteNotebook() {
+        final AlertDialog.Builder builder = new AlertDialog.Builder(this);
+        builder.setCancelable(true);
+        builder.setTitle("Choose Notebook to Delete");
+
+        //create listview
+        RecyclerView notebookView = new RecyclerView(this);
+        //listener for onClick of listview of notebooks
+        notebookView.addOnItemTouchListener(new RecyclerView.SimpleOnItemTouchListener() {
+            private float mDownX;
+            private float mDownY;
+            private final float SCROLL_THRESHOLD = 10;
+            private boolean isOnClick;
+
+            @Override
+            public boolean onInterceptTouchEvent(@NonNull final RecyclerView recyclerView, @NonNull final MotionEvent motionEvent) {
+                switch (motionEvent.getAction() & MotionEvent.ACTION_MASK) {
+                    case MotionEvent.ACTION_DOWN:
+                        mDownX = motionEvent.getX();
+                        mDownY = motionEvent.getY();
+                        isOnClick = true;
+                        break;
+                    case MotionEvent.ACTION_CANCEL:
+                    case MotionEvent.ACTION_UP:
+                        if (isOnClick) {
+                            float xValue = motionEvent.getX();
+                            float yValue = motionEvent.getY();
+                            LinearLayout layout = (LinearLayout) recyclerView.findChildViewUnder(xValue, yValue);
+                            if (layout != null) {
+                                final TextView notebookUnix = (TextView) layout.getChildAt(2);
+                                final TextView notebookName = (TextView) layout.getChildAt(0);
+                                //popup that confirms if user really wants to delete notebook
+                                new AlertDialog.Builder(MainActivity.this)
+                                        .setTitle("Confirm Delete")
+                                        .setMessage("Do you really want to delete " + notebookName.getText() + "?")
+                                        .setPositiveButton(android.R.string.yes, new DialogInterface.OnClickListener() {
+                                            public void onClick(DialogInterface dialog, int whichButton) {
+                                                long notebookUnixTime = Long.parseLong(notebookUnix.getText().toString());
+                                                //deletes notebook from database object, which will cascade changes to RecyclerViews
+                                                Notebook notebook = viewModel.getNotebookByUnixTime(notebookUnixTime);
+                                                viewModel.delete(notebook);
+                                            }
+                                        })
+                                        .setNegativeButton(android.R.string.no, null).show();
+                            }
+                        }
+                        break;
+                    case MotionEvent.ACTION_MOVE:
+                        if (isOnClick && (Math.abs(mDownX - motionEvent.getX()) > SCROLL_THRESHOLD || Math.abs(mDownY - motionEvent.getY()) > SCROLL_THRESHOLD)) {
+
+                            isOnClick = false;
+                        }
+                        break;
+                    default:
+                        break;
+                }
+                return false;
+            }
+        });
+
+        final NotebookViewAdapter renameAdapter = new NotebookViewAdapter(this);
+        notebookView.setAdapter(renameAdapter);
+        notebookView.setLayoutManager(new LinearLayoutManager(this));
+        viewModel.getNotebooks().observe(this, new Observer<List<Notebook>>() {
+            @Override
+            public void onChanged(@Nullable final List<Notebook> notebooks) {
+                // Update the cached copy of the words in the adapter.
+                renameAdapter.setNotebooks(notebooks);
+            }
+        });
+
+        builder.setView(notebookView);
+        builder.setNegativeButton(R.string.cancel, new DialogInterface.OnClickListener() {
+            @Override
+            public void onClick(DialogInterface dialog, int which) {
+                dialog.dismiss();
+            }
+        });
+
+        builder.show();
+    }
+
+    /**
+     * Sorts adapter for RecyclerView based on global Comparator objects.
+     *
+     * @param item menu item that was selected by user
+     */
+    private void reorderNotebook(MenuItem item) {
+        //if title is reorder by name
+        if (getResources().getString(R.string.action_reorder_name).equals(item.getTitle().toString())) {
+            item.setTitle(R.string.action_reorder_date);
+            //gets database object
+            viewModel.getNotebooks().observe(this, new Observer<List<Notebook>>() {
+                @Override
+                public void onChanged(@Nullable final List<Notebook> notebooks) {
+                    Collections.sort(notebooks, nameSort);
+                    adapter.setNotebooks(notebooks);
+                }
+            });
+            //if title is reorder by date
+        } else {
+            item.setTitle(R.string.action_reorder_name);
+            //gets database object
+            viewModel.getNotebooks().observe(this, new Observer<List<Notebook>>() {
+                @Override
+                public void onChanged(@Nullable final List<Notebook> notebooks) {
+                    Collections.sort(notebooks, dateSort);
+                    adapter.setNotebooks(notebooks);
+                }
+            });
+        }
+    }
+
+    /**
+     * Creates a new <code>Notebook</code> with the provided <code>name</code> and the current
+     * <code>unixTime</code>. Adds the new <code>Notebook</code> to the notebook table of
+     * the database. Calls the <code>openNotebook</code> method to display the new
+     * <code>Notebook</code> to the user.
+     *
+     * @param name The title of the <code>Notebook</code> to be created.
+     */
+    private void createNotebook(String name) {
+        long unixTime = System.currentTimeMillis();
+        Notebook notebook = new Notebook(unixTime, name);
+        //code for inserting the new data into the notebook table of the DB.
+        viewModel.insert(notebook);
+
+        openNotebook(unixTime);
+    }
+
+    /**
+     * Given an <code>index</code>, this method sends the user to the <code>Notebook</code>
+     * from the <code>NotebookList</code>. This method calls the <code>openNotebook</code>
+     * method with the <code>unixTime</code> parameter.
+     *
+     * @param index The index in <code>notebookList</code> for the <code>Notebook</code> that
+     *              the user wants to go to.
+     */
+    private void openNotebook(int index) {
+        Notebook notebook = viewModel.getNotebookByIndex(index);
+        long unixTime = notebook.getUnixTime();
+        openNotebook(unixTime);
+    }
+
+    /**
+     * Creates an <code>Intent</code> and starts the <code>NotebookActivity</code> with
+     * the <code>unixTime</code> of the <code>Notebook</code> the user wants to access.
+     *
+     * @param unixTime The primary key of the <code>Notebook</code> to access.
+     */
+    private void openNotebook(long unixTime) {
+        Intent intent = new Intent(this, NotebookActivity.class);
+        intent.putExtra(THIS_UNIX, unixTime);
+        startActivity(intent);
+    }
+}

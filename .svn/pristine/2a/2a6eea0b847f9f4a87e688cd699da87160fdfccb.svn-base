@@ -1,0 +1,65 @@
+package com.example.fieldnotes.activities;
+
+import android.content.Context;
+import android.support.annotation.NonNull;
+import android.support.v7.widget.RecyclerView;
+import android.view.LayoutInflater;
+import android.view.View;
+import android.view.ViewGroup;
+import android.widget.TextView;
+
+import com.example.fieldnotes.R;
+import com.example.fieldnotes.java.Stop;
+
+import java.util.Collections;
+import java.util.List;
+import java.util.Locale;
+
+public class StopViewAdapter extends RecyclerView.Adapter<StopViewAdapter.FieldNotesViewHolder> {
+
+    class FieldNotesViewHolder extends RecyclerView.ViewHolder {
+        private final TextView stopTitle;
+        private final TextView stopDate;
+        private final TextView stopUnix;
+
+        private FieldNotesViewHolder(View itemView) {
+            super(itemView);
+            stopTitle = itemView.findViewById(R.id.list_item_title);
+            stopDate = itemView.findViewById(R.id.list_item_date);
+            stopUnix = itemView.findViewById(R.id.list_item_unix);
+        }
+    }
+
+    private final LayoutInflater inflater;
+    private List<Stop> stops = Collections.emptyList();
+
+    StopViewAdapter(Context context) {
+        inflater = LayoutInflater.from(context);
+    }
+
+    @NonNull
+    @Override
+    public StopViewAdapter.FieldNotesViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int i) {
+        View itemView = inflater.inflate(R.layout.list_item, parent, false);
+        return new StopViewAdapter.FieldNotesViewHolder(itemView);
+    }
+
+    @Override
+    public void onBindViewHolder(@NonNull final StopViewAdapter.FieldNotesViewHolder stopViewHolder, int i) {
+        Stop stop = stops.get(i);
+        stopViewHolder.stopTitle.setText(stop.getStopName());
+        stopViewHolder.stopDate.setText(String.format(Locale.ENGLISH, "%d", stop.getTime()));
+        stopViewHolder.stopUnix.setText(String.format(Locale.ENGLISH, "%d", stop.getUnixTime()));
+    }
+
+    @Override
+    public int getItemCount() {
+        return stops.size();
+    }
+
+    public void setStops(List<Stop> stops) {
+        this.stops = stops;
+        //notifys RecyclerView to repopulate list with changed data
+        notifyDataSetChanged();
+    }
+}

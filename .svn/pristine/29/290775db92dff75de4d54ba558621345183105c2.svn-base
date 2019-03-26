@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="utf-8"?>
+<android.support.constraint.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    app:layout_behavior="@string/appbar_scrolling_view_behavior"
+    tools:context=".activities.CaptionActivity"
+    tools:showIn="@layout/activity_caption">
+
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="match_parent">
+    <GridLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:columnCount="1"
+        android:rowCount="4"
+        >
+        <ImageView
+            android:id="@+id/picture"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:scaleType="centerCrop"
+            android:adjustViewBounds="true"
+            android:contentDescription="TODO"
+            android:layout_row="0"/>
+
+        <EditText
+            android:id="@+id/caption"
+            android:layout_width="fill_parent"
+            android:layout_height="wrap_content"
+            android:layout_gravity="top"
+            android:hint="@string/enter_your_caption"
+            android:layout_row="1"
+            android:inputType="textCapSentences|textAutoCorrect|textMultiLine" />
+
+        <Button
+            android:id="@+id/saveimage"
+            android:text="@string/save_and_exit"
+            android:layout_width="fill_parent"
+            android:layout_height="wrap_content"
+            android:layout_margin="2dp"
+            android:layout_gravity="top"
+            android:layout_row="2"
+            android:onClick="saveAndReturn"/>
+
+        <Button
+            android:id="@+id/retake"
+            android:text="@string/save_and_take_another"
+            android:layout_width="fill_parent"
+            android:layout_height="wrap_content"
+            android:layout_margin="2dp"
+            android:layout_gravity="top"
+            android:layout_row="3"
+            android:onClick="saveAndRetake"/>
+
+    </GridLayout>
+
+    </ScrollView>
+
+</android.support.constraint.ConstraintLayout>

@@ -1,0 +1,171 @@
+package com.example.fieldnotes.database;
+
+import android.arch.persistence.db.SupportSQLiteDatabase;
+import android.arch.persistence.room.Database;
+import android.arch.persistence.room.Room;
+import android.arch.persistence.room.RoomDatabase;
+import android.content.Context;
+import android.os.AsyncTask;
+import android.support.annotation.NonNull;
+
+import com.example.fieldnotes.java.Notebook;
+import com.example.fieldnotes.java.Picture;
+import com.example.fieldnotes.java.Stop;
+
+/**
+ * Creates the Room Database within the app data, if it doesn't already exist. Tables will be
+ * constructed in the following manner based off of the annotations within respective entity
+ * classes:<br>
+ * <p>
+ * Table: notebook_table<br><br>
+ * <p>
+ * Columns:<br>
+ * Column        | Data Type |                      Description<br>
+ * notebook_id   |   long    | Table primary key, generated using Unix Epoch time. Must be non-null.<br>
+ * notebook_name |  String   | Name of the <code>Notebook</code>. Changable, but must be non-null.<br><br><br>
+ * <p>
+ * <p>
+ * Table: stops_table<br><br>
+ * <p>
+ * Columns:<br>
+ * Column      | Data Type |                 Description<br>
+ * stop_id     |   long    | Table primary key, generated using Unix Epoch time. Must be non-null.<br>
+ * stop_name   |  String   | Name of the <code>Stop</code>. Changable, but must be non-null.<br>
+ * notebook_id |   long    | Table foreign key, the primary key of the <code>Notebook</code> to which the stop belongs. Must be non-null<br>
+ * latitude    |  double   | Latitudinal coordinate of the <code>Stop</code>.<br>
+ * longitude   |  double   | Longitudinal coordinate of the <code>Stop</code>.<br>
+ * notes       |  String   | Notes taken for the <code>Stop</code>.<br>
+ * stop_time   |   long    | Time at which the <code>Stop</code> was created. Editable for note taking purposes.<br><br><br>
+ * <p>
+ * <p>
+ * Table: pictures_table<br><br>
+ * <p>
+ * Columns:<br>
+ * Column       | Data Type |                   Description<br>
+ * picture_id   |   long    | Table primary key, generated using Unix Epoch time. Must be non-null.<br>
+ * picture_path |  String   | Local path to the <code>Picture</code>.
+ * stop_id      |   long    | Table foreign key, the primary key of the <code>Stop</code> to which the picture belongs. Must be non-null<br><br>
+ *
+ * @author Tyler Seidel (2019)
+ */
+@Database(entities = {Stop.class, Notebook.class, Picture.class}, version = 3, exportSchema = false)
+public abstract class FieldNotesRoomDatabase extends RoomDatabase {
+
+
+
+    private static volatile FieldNotesRoomDatabase INSTANCE;
+
+    //Data access objects required to run SQLite queries
+    public abstract StopDao stopDao();
+    public abstract NotebookDao notebookDao();
+    public abstract PictureDao pictureDao();
+
+
+
+    /**
+     * Callback for use with a <code>PopulateDBAsync</code>. When used with
+     * <code>addCallback(sRoomDatabaseCallback)</code> in the <code>getDatabase</code> method, the
+     * database will be populated with testing data.
+     */
+    private static RoomDatabase.Callback sRoomDatabaseCallback =
+            new RoomDatabase.Callback() {
+
+                @Override
+                public void onOpen(@NonNull SupportSQLiteDatabase db) {
+                    super.onOpen(db);
+                    new PopulateDbAsync(INSTANCE).execute();
+                }
+            };
+
+    /**
+     * Receives the <code>FieldNotesRoomData</code> of the app based off of the <code>Context</code>
+     * of the user's app.
+     */
+    static synchronized FieldNotesRoomDatabase getDatabase(final Context context) {
+
+        if (INSTANCE == null) {
+            //database gets created here if it doesn't exist
+            INSTANCE = Room.databaseBuilder(context.getApplicationContext(),
+                    FieldNotesRoomDatabase.class, "field_notes_database")
+                    .fallbackToDestructiveMigration()
+                    //UNCOMMENT LINE BELOW AND RUN TO POPULATE APP WITH TEST DATA
+                    //.addCallback(sRoomDatabaseCallback)
+                    .allowMainThreadQueries()
+                    .build();
+        }
+
+
+        return INSTANCE;
+    }
+
+
+
+    /**
+     * An <code>AsyncTask</code> that will allow the user to fill the database with test data
+     * upon database creation. WARNING: WHEN POPULATING WITH TEST DATA, ALL PREVIOUS DATA IN THE
+     * DATABASE WILL BE DELETED.
+     */
+    private static class PopulateDbAsync extends AsyncTask<Void, Void, Void> {
+
+        private final NotebookDao nbDao;
+        private final StopDao sDao;
+
+        PopulateDbAsync(FieldNotesRoomDatabase db) {
+            nbDao = db.notebookDao();
+            sDao = db.stopDao();
+        }
+
+        @Override
+        protected Void doInBackground(final Void... params) {
+            nbDao.deleteAll();
+            sDao.deleteAll();
+
+            //populate notebooks table
+            Notebook n = new Notebook(1234567);
+            n.setNotebookName("nb_01");
+            nbDao.insert(n);
+
+            n = new Notebook(1234568);
+            n.setNotebookName("nb_02");
+            nbDao.insert(n);
+
+            n = new Notebook(1234569);
+            n.setNotebookName("nb_03");
+            nbDao.insert(n);
+
+            //populate stops table
+            Stop s = new Stop(2345678);
+            s.setStopName("s_01_01");
+            s.setParentUnixTime(1234567);
+            sDao.insert(s);
+
+            s = new Stop(2345679);
+            s.setStopName("s_01_02");
+            s.setParentUnixTime(1234567);
+            sDao.insert(s);
+
+            s = new Stop(3456789);
+            s.setStopName("s_02_01");
+            s.setParentUnixTime(1234568);
+            sDao.insert(s);
+
+            s = new Stop(3456780);
+            s.setStopName("s_02_02");
+            s.setParentUnixTime(1234568);
+            sDao.insert(s);
+
+            s = new Stop(4567890);
+            s.setStopName("s_03_01");
+            s.setParentUnixTime(1234569);
+            sDao.insert(s);
+
+            s = new Stop(4567891);
+            s.setStopName("s_03_02");
+            s.setParentUnixTime(1234569);
+            sDao.insert(s);
+
+
+            return null;
+        }
+    }
+}

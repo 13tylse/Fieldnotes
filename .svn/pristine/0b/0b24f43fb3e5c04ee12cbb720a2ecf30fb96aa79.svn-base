@@ -1,0 +1,69 @@
+package com.example.fieldnotes.activities;
+
+import android.content.Context;
+import android.support.annotation.NonNull;
+import android.support.v7.widget.RecyclerView;
+import android.view.LayoutInflater;
+import android.view.View;
+import android.view.ViewGroup;
+import android.widget.TextView;
+
+import com.example.fieldnotes.R;
+import com.example.fieldnotes.java.Notebook;
+
+import java.util.Collections;
+import java.util.List;
+import java.util.Locale;
+
+/**
+ * Adapter for Notebook RecyclerView in <code>MainActivity</code>. This class will notify any
+ * attached RecyclerView of data updates to cascade changes in the database.
+ */
+public class NotebookViewAdapter extends RecyclerView.Adapter<NotebookViewAdapter.FieldNotesViewHolder> {
+
+    class FieldNotesViewHolder extends RecyclerView.ViewHolder {
+        private final TextView notebookTitle;
+        private final TextView notebookDate;
+        private final TextView notebookUnix;
+
+        private FieldNotesViewHolder(View itemView) {
+            super(itemView);
+            notebookTitle = itemView.findViewById(R.id.list_item_title);
+            notebookDate = itemView.findViewById(R.id.list_item_date);
+            notebookUnix = itemView.findViewById(R.id.list_item_unix);
+        }
+    }
+
+    private final LayoutInflater inflater;
+    private List<Notebook> notebooks = Collections.emptyList();
+
+    NotebookViewAdapter(Context context) {
+        inflater = LayoutInflater.from(context);
+    }
+
+    @NonNull
+    @Override
+    public NotebookViewAdapter.FieldNotesViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int i) {
+        View itemView = inflater.inflate(R.layout.list_item, parent, false);
+        return new FieldNotesViewHolder(itemView);
+    }
+
+    @Override
+    public void onBindViewHolder(@NonNull final NotebookViewAdapter.FieldNotesViewHolder notesViewHolder, int i) {
+        Notebook notebook = notebooks.get(i);
+        notesViewHolder.notebookTitle.setText(notebook.getNotebookName());
+        notesViewHolder.notebookDate.setText(notebook.getDate().toString());
+        notesViewHolder.notebookUnix.setText(String.format(Locale.ENGLISH, "%d", notebook.getUnixTime()));
+    }
+
+    @Override
+    public int getItemCount() {
+        return notebooks.size();
+    }
+
+    public void setNotebooks(List<Notebook> notebooks) {
+        this.notebooks = notebooks;
+        //notifys RecyclerView to repopulate list with changed data
+        notifyDataSetChanged();
+    }
+}

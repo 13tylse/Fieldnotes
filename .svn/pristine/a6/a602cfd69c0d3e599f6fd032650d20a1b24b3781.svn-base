@@ -1,0 +1,557 @@
+package com.example.fieldnotes.activities;
+
+import android.arch.lifecycle.Observer;
+import android.arch.lifecycle.ViewModelProviders;
+import android.content.DialogInterface;
+import android.content.Intent;
+import android.os.Bundle;
+import android.support.annotation.NonNull;
+import android.support.annotation.Nullable;
+import android.support.design.widget.FloatingActionButton;
+import android.support.v7.app.AlertDialog;
+import android.support.v7.app.AppCompatActivity;
+import android.support.v7.widget.LinearLayoutManager;
+import android.support.v7.widget.RecyclerView;
+import android.support.v7.widget.Toolbar;
+import android.text.InputType;
+import android.view.Menu;
+import android.view.MenuItem;
+import android.view.MotionEvent;
+import android.view.View;
+import android.widget.EditText;
+import android.widget.LinearLayout;
+import android.widget.TextView;
+import android.widget.Toast;
+
+import com.example.fieldnotes.R;
+import com.example.fieldnotes.database.FieldNotesViewModel;
+import com.example.fieldnotes.database.FieldNotesViewModelFactory;
+import com.example.fieldnotes.java.Notebook;
+import com.example.fieldnotes.java.Stop;
+import com.example.fieldnotes.utilities.KeyboardUtility;
+
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.List;
+
+/**
+ * An <code>Activity</code> that displays a <code>Notebook</code>; that is, a list of
+ * <code>Stops</code> that pertain to a certain location. This displays a <code>ListView</code>
+ * <code>Stops</code> and has a floating action button that allows the user to create a new
+ * <code>Stop</code> through a pop-up dialog box.
+ *
+ * @author Steven Hricenak (2019)
+ */
+public class NotebookActivity extends AppCompatActivity {
+
+    private static final int STOP_REQUEST = 1;
+
+    //comparator classes for sorting stops by name and date
+    private final Comparator<Stop> nameSort = new Comparator<Stop>() {
+        @Override
+        public int compare(Stop o1, Stop o2) {
+            String name1 = o1.getStopName();
+            String name2 = o2.getStopName();
+            return name1.compareTo(name2);
+        }
+    };
+
+    private final Comparator<Stop> dateSort = new Comparator<Stop>() {
+        @Override
+        public int compare(Stop o1, Stop o2) {
+            long time1 = o1.getUnixTime();
+            long time2 = o2.getUnixTime();
+            if (time1 > time2) {
+                return 1;
+            } else if (time1 < time2) {
+                return -1;
+            } else {
+                return 0;
+            }
+        }
+    };
+
+    private long unixTime;
+    private Notebook notebook;
+    private FieldNotesViewModel viewModel;
+    private StopViewAdapter adapter;
+
+    //needs to save view where the keyboard is open to close it
+    private View viewWithKeyboard;
+
+    /**
+     * Calls the parent <code>onCreate</code> method, then populates the <code>ListView</code>
+     * of <code>Stops</code>. Also maps the <code>createStopPopup</code> to the floating action
+     * button.
+     * <br/>
+     *
+     * @param savedInstanceState The data stored by the app when it is minimized, brought out
+     *                           of focus, etc. so the app can restore its data.
+     */
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+       // findViewById(R.id.loadingPanel).setVisibility(View.GONE);
+        setContentView(R.layout.activity_notebook);
+        Toolbar toolbar = findViewById(R.id.toolbar);
+        setSupportActionBar(toolbar);
+        FloatingActionButton fab = findViewById(R.id.fab);
+        fab.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                createStopPopup();
+            }
+        });
+        getSupportActionBar().setDisplayHomeAsUpEnabled(true);
+
+        unixTime = getIntent().getLongExtra("Unix Time", 0);
+
+        RecyclerView stopView = findViewById(R.id.stop_view);
+        //listener for onClick of listview of notebooks
+        stopView.addOnItemTouchListener(new RecyclerView.SimpleOnItemTouchListener() {
+
+            private float mDownX;
+            private float mDownY;
+            private final float SCROLL_THRESHOLD = 10;
+            private boolean isOnClick;
+
+            /**
+             * Determine which kind of <code>MotionEvent</code> is
+             * being performed
+             *
+             * Two types of movement: taps or scrolling
+             */
+            @Override
+            public boolean onInterceptTouchEvent(@NonNull RecyclerView recyclerView, @NonNull MotionEvent motionEvent) {
+                switch (motionEvent.getAction() & MotionEvent.ACTION_MASK) {
+                    case MotionEvent.ACTION_DOWN:
+                        mDownX = motionEvent.getX();
+                        mDownY = motionEvent.getY();
+                        isOnClick = true;
+                        break;
+                    case MotionEvent.ACTION_CANCEL:
+                    case MotionEvent.ACTION_UP:
+                        if (isOnClick) {
+                            LinearLayout layout = (LinearLayout) recyclerView.findChildViewUnder(motionEvent.getX(), motionEvent.getY());
+                            if (layout != null) {
+                                TextView stopUnix = (TextView) layout.getChildAt(2);
+                                long stopUnixTime = Long.parseLong(stopUnix.getText().toString());
+                                openStop(stopUnixTime);
+                            }
+                        }
+                        break;
+                    case MotionEvent.ACTION_MOVE:
+                        if (isOnClick && (Math.abs(mDownX - motionEvent.getX()) > SCROLL_THRESHOLD || Math.abs(mDownY - motionEvent.getY()) > SCROLL_THRESHOLD)) {
+
+                            isOnClick = false;
+                        }
+                        break;
+                    default:
+                        break;
+                }
+                return false;
+            }
+        });
+        findViewById(R.id.loadingPanel).setVisibility(View.GONE);
+        adapter = new StopViewAdapter(this);
+        stopView.setLayoutManager(new LinearLayoutManager(this));
+        viewModel = ViewModelProviders.of(this, new FieldNotesViewModelFactory(this.getApplication(), unixTime)).get(FieldNotesViewModel.class);
+
+        stopView.setAdapter(adapter);
+
+        //gets database object
+        notebook = viewModel.getNotebookByUnixTime(unixTime);
+
+        //set an observer on the notebook data so the app knows to update the data when changed
+        viewModel.getAllStopsByNotebook(notebook).observe(this, new Observer<List<Stop>>() {
+            @Override
+            public void onChanged(@Nullable final List<Stop> stops) {
+                // Update the cached copy of the words in the adapter.
+                adapter.setStops(stops);
+            }
+        });
+    }
+
+    /**
+     * Inflate the menu, this adds items to the action bar if it is present.
+     *
+     * @param menu the Menu object to show when the user clicks
+     */
+    @Override
+    public boolean onCreateOptionsMenu(Menu menu) {
+        // Inflate the menu; this adds items to the action bar if it is present.
+        getMenuInflater().inflate(R.menu.menu_main, menu);
+        return true;
+    }
+
+    /**
+     * Handles when items are selected from the drop-down menu.
+     *
+     * @param item The <code>MenuItem</code> clicked by user.
+     * @return False if the <code>item</code> is null. True otherwise.
+     */
+    @Override
+    public boolean onOptionsItemSelected(MenuItem item) {
+        // The action bar will automatically handle clicks on the Home/Up button, so long
+        // as you specify a parent activity in AndroidManifest.xml.
+        int id = item.getItemId();
+
+        if (adapter.getItemCount() > 0) {
+            if (id == R.id.action_rename) {
+                renameStopsList();
+            } else if (id == R.id.action_delete) {
+                deleteStop();
+            } else if (id == R.id.action_reorder) {
+                reorderStop(item);
+            }
+        } else {
+            Toast.makeText(this, "There are no Stops!", Toast.LENGTH_SHORT).show();
+        }
+        return super.onOptionsItemSelected(item);
+    }
+
+    /**
+     * Displays a popup with all <code>Stops</code> mapped to buttons, and prompts the user to
+     * select the <code>Stops</code> they want to rename.
+     */
+    private void renameStopsList() {
+        final AlertDialog.Builder builder = new AlertDialog.Builder(this);
+        builder.setCancelable(true);
+        builder.setTitle("Choose Notebook to Rename");
+
+        //create listview
+        RecyclerView stopView = new RecyclerView(this);
+        //listener for onClick of listview of notebooks
+        //listener instead sends to renameStopText
+        stopView.addOnItemTouchListener(new RecyclerView.SimpleOnItemTouchListener() {
+            private float mDownX;
+            private float mDownY;
+            private final float SCROLL_THRESHOLD = 10;
+            private boolean isOnClick;
+
+            @Override
+            public boolean onInterceptTouchEvent(@NonNull RecyclerView recyclerView, @NonNull MotionEvent motionEvent) {
+                switch (motionEvent.getAction() & MotionEvent.ACTION_MASK) {
+                    case MotionEvent.ACTION_DOWN:
+                        mDownX = motionEvent.getX();
+                        mDownY = motionEvent.getY();
+                        isOnClick = true;
+                        break;
+                    case MotionEvent.ACTION_CANCEL:
+                    case MotionEvent.ACTION_UP:
+                        if (isOnClick) {
+                            LinearLayout layout = (LinearLayout) recyclerView.findChildViewUnder(motionEvent.getX(), motionEvent.getY());
+                            if (layout != null) {
+                                TextView stopUnix = (TextView) layout.getChildAt(2);
+                                renameStopText(Long.parseLong(stopUnix.getText().toString()));
+                            }
+                        }
+                        break;
+                    case MotionEvent.ACTION_MOVE:
+                        if (isOnClick && (Math.abs(mDownX - motionEvent.getX()) > SCROLL_THRESHOLD || Math.abs(mDownY - motionEvent.getY()) > SCROLL_THRESHOLD)) {
+
+                            isOnClick = false;
+                        }
+                        break;
+                    default:
+                        break;
+                }
+                return false;
+            }
+        });
+
+        final StopViewAdapter renameAdapter = new StopViewAdapter(this);
+        stopView.setAdapter(renameAdapter);
+        stopView.setLayoutManager(new LinearLayoutManager(this));
+        viewModel.getAllStopsByNotebook(notebook).observe(this, new Observer<List<Stop>>() {
+            @Override
+            public void onChanged(@Nullable final List<Stop> stops) {
+                // Update the cached copy of the words in the adapter.
+                renameAdapter.setStops(stops);
+            }
+        });
+
+        builder.setView(stopView);
+        builder.setNegativeButton(R.string.cancel, new DialogInterface.OnClickListener() {
+            @Override
+            public void onClick(DialogInterface dialog, int which) {
+                dialog.dismiss();
+            }
+        });
+
+        builder.show();
+    }
+
+    /**
+     * Displays a popup prompting the user for the new name for the selected
+     * <code>Stop</code>.
+     *
+     * @param stopUnix unix time of selected stop in string format
+     */
+    private void renameStopText(final long stopUnix) {
+        final AlertDialog.Builder builder = new AlertDialog.Builder(this);
+        builder.setCancelable(true);
+        builder.setTitle("Rename Stop");
+
+        final Stop stop = viewModel.getStopByUnixTime(stopUnix);
+
+        //create text field and auto populate
+        final EditText renameTextField = new EditText(this);
+        renameTextField.append(stop.getStopName());
+        builder.setView(renameTextField);
+
+        builder.setPositiveButton(R.string.confirm, new DialogInterface.OnClickListener() {
+            @Override
+            public void onClick(DialogInterface dialog, int which) {
+                KeyboardUtility.forceHideKeyboard(NotebookActivity.this, renameTextField);
+                stop.setStopName(renameTextField.getText().toString());
+                viewModel.updateSynchronously(stop);
+            }
+        });
+        builder.setNegativeButton(R.string.cancel, new DialogInterface.OnClickListener() {
+            @Override
+            public void onClick(DialogInterface dialog, int which) {
+                KeyboardUtility.forceHideKeyboard(NotebookActivity.this, renameTextField);
+                dialog.dismiss();
+            }
+        });
+
+        KeyboardUtility.forceShowKeyboard(this);
+        builder.show();
+    }
+
+    /**
+     * Displays a popup for the user to select a stop to delete. Has a confirm dialog
+     * nested inside to confirm.
+     */
+    private void deleteStop() {
+        final AlertDialog.Builder builder = new AlertDialog.Builder(this);
+        builder.setCancelable(true);
+        builder.setTitle("Choose Stop to Delete");
+
+        //create listview
+        RecyclerView stopView = new RecyclerView(this);
+        //listener for onClick of listview of notebooks
+        stopView.addOnItemTouchListener(new RecyclerView.SimpleOnItemTouchListener() {
+            private float mDownX;
+            private float mDownY;
+            private final float SCROLL_THRESHOLD = 10;
+            private boolean isOnClick;
+
+            @Override
+            public boolean onInterceptTouchEvent(@NonNull final RecyclerView recyclerView, @NonNull final MotionEvent motionEvent) {
+                switch (motionEvent.getAction() & MotionEvent.ACTION_MASK) {
+                    case MotionEvent.ACTION_DOWN:
+                        mDownX = motionEvent.getX();
+                        mDownY = motionEvent.getY();
+                        isOnClick = true;
+                        break;
+                    case MotionEvent.ACTION_CANCEL:
+                    case MotionEvent.ACTION_UP:
+                        if (isOnClick) {
+                            float xValue = motionEvent.getX();
+                            float yValue = motionEvent.getY();
+                            LinearLayout layout = (LinearLayout) recyclerView.findChildViewUnder(xValue, yValue);
+                            if (layout != null) {
+                                final TextView stopUnix = (TextView) layout.getChildAt(2);
+                                final TextView stopName = (TextView) layout.getChildAt(0);
+                                //popup that confirms if user really wants to delete stop
+                                new AlertDialog.Builder(NotebookActivity.this)
+                                        .setTitle("Confirm Delete")
+                                        .setMessage("Do you really want to delete " + stopName.getText() + "?")
+                                        .setPositiveButton(R.string.confirm, new DialogInterface.OnClickListener() {
+                                            public void onClick(DialogInterface dialog, int whichButton) {
+                                                long stopUnixTime = Long.parseLong(stopUnix.getText().toString());
+                                                //deletes stop from database object, which will cascade changes to RecyclerViews
+                                                Stop stop = viewModel.getStopByUnixTime(stopUnixTime);
+                                                viewModel.delete(stop);
+                                            }
+                                        })
+                                        .setNegativeButton(R.string.cancel, null).show();
+                            }
+                        }
+                        break;
+                    case MotionEvent.ACTION_MOVE:
+                        if (isOnClick && (Math.abs(mDownX - motionEvent.getX()) > SCROLL_THRESHOLD || Math.abs(mDownY - motionEvent.getY()) > SCROLL_THRESHOLD)) {
+
+                            isOnClick = false;
+                        }
+                        break;
+                    default:
+                        break;
+                }
+                return false;
+            }
+        });
+
+        final StopViewAdapter renameAdapter = new StopViewAdapter(this);
+        stopView.setAdapter(renameAdapter);
+        stopView.setLayoutManager(new LinearLayoutManager(this));
+        viewModel.getAllStopsByNotebook(notebook).observe(this, new Observer<List<Stop>>() {
+            @Override
+            public void onChanged(@Nullable final List<Stop> stops) {
+                // Update the cached copy of the words in the adapter.
+                renameAdapter.setStops(stops);
+            }
+        });
+
+        builder.setView(stopView);
+        builder.setNegativeButton(R.string.cancel, new DialogInterface.OnClickListener() {
+            @Override
+            public void onClick(DialogInterface dialog, int which) {
+                dialog.dismiss();
+            }
+        });
+
+        builder.show();
+    }
+
+    /**
+     * Sorts adapter for RecyclerView based on global Comparator objects.
+     *
+     * @param item menu item that was selected by user
+     */
+    private void reorderStop(MenuItem item) {
+        //if title is reorder by name
+        if (getResources().getString(R.string.action_reorder_name).equals(item.getTitle())) {
+            item.setTitle(R.string.action_reorder_date);
+            //gets database object
+            viewModel.getAllStopsByNotebook(notebook).observe(this, new Observer<List<Stop>>() {
+                @Override
+                public void onChanged(@Nullable final List<Stop> stops) {
+                    Collections.sort(stops, nameSort);
+                    adapter.setStops(stops);
+                }
+            });
+            //if title is reorder by date
+        } else {
+            item.setTitle(R.string.action_reorder_name);
+            //gets database object
+            viewModel.getAllStopsByNotebook(notebook).observe(this, new Observer<List<Stop>>() {
+                @Override
+                public void onChanged(@Nullable final List<Stop> stops) {
+                    Collections.sort(stops, dateSort);
+                    adapter.setStops(stops);
+                }
+            });
+        }
+    }
+
+    /**
+     * Ensures that the keyboard closes when this <code>Activity</code> is brought out of
+     * focus.
+     */
+    @Override
+    protected void onPause() {
+        super.onPause();
+
+        KeyboardUtility.forceHideKeyboard(this, viewWithKeyboard);
+    }
+
+    /**
+     * Linked to the floating action button. Will display a dialog box with a text field,
+     * asking the user for the name of their new stop. Once the name is provided, the
+     * <code>createStop</code> method is called, passing the name provided by the user.
+     */
+    private void createStopPopup() {
+        //boiler-plate for setting up dialog box
+        AlertDialog.Builder builder = new AlertDialog.Builder(this);
+        builder.setCancelable(true);
+        builder.setTitle("Create Stop");
+        builder.setMessage("Enter a name for the new Stop");
+
+        //create text field
+        final EditText nameField = new EditText(this);
+        viewWithKeyboard = nameField;
+        nameField.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_CAP_SENTENCES);
+        builder.setView(nameField);
+
+        //add ok/cancel functionality
+        builder.setPositiveButton(R.string.confirm, new DialogInterface.OnClickListener() {
+            @Override
+            public void onClick(DialogInterface dialog, int which) {
+                if (nameField.getText().toString().length() > 0) {
+                    KeyboardUtility.forceHideKeyboard(NotebookActivity.this, viewWithKeyboard);
+                    createStop(nameField.getText().toString());
+                } else {
+                    Toast.makeText(NotebookActivity.this, "Please enter a valid name.", Toast.LENGTH_SHORT).show();
+                }
+            }
+        });
+        builder.setNegativeButton(R.string.cancel, new DialogInterface.OnClickListener() {
+            @Override
+            public void onClick(DialogInterface dialog, int which) {
+                KeyboardUtility.forceHideKeyboard(NotebookActivity.this, viewWithKeyboard);
+                dialog.dismiss();
+            }
+        });
+
+        KeyboardUtility.forceShowKeyboard(this);
+        builder.show();
+    }
+
+    /**
+     * Creates a new <code>Stop</code> with the <code>name</code> provided and the current
+     * <code>unixTime</code>. Adds the new <code>Stop</code> data to the stop table in the
+     * database. Calls the <code>openStop</code> method to display the new <code>Stop</code>
+     * to the user.
+     * <br/>
+     * NOTE: database operations not implemented yet.
+     *
+     * @param name The title of the new <code>Stop</code>.
+     */
+    private void createStop(String name) {
+       // findViewById(R.id.loadingPanel).setVisibility(View.VISIBLE);
+        long unixTime = System.currentTimeMillis();
+        Stop stop = new Stop(unixTime);
+        stop.setStopName(name);
+        stop.setTime(unixTime);
+        stop.setParentUnixTime(notebook.getUnixTime());
+      //  Toast.makeText(NotebookActivity.this, "Create Stop...", Toast.LENGTH_LONG).show();
+        //breaking app for now, you can uncomment later
+        //stop.setParentUnixTime(notebook.getUnixTime());
+        //code that will add this new stop to the stops page of the database
+        viewModel.insert(stop);
+        openStop(unixTime);
+    }
+
+    /**
+     * Given the <code>index</code> of the <code>Stop</code> in the <code>Notebook</code>.
+     * This method will get the <code>unixTime</code> of that <code>Stop</code> and call the
+     * <code>openStop</code> method that takes <code>unixTime</code> as an argument.
+     *
+     * @param index The index of the <code>Stop</code> in the <code>Notebook</code> that the
+     *              user wants to access.
+     */
+    private void openStop(int index) {
+        openStop(notebook.getUnixTimeOfStop(index));
+    }
+
+    /**
+     * Creates an <code>Intent</code> and starts the <code>StopActivity</code> with
+     * the <code>unixTime</code> of the <code>Stop</code> the user wants to access.
+     *
+     * @param unixTime The primary key of the <code>Notebook</code> to access.
+     */
+    private void openStop(long unixTime) {
+
+        Intent intent = new Intent(this, StopActivity.class);
+        intent.putExtra("Unix Time", unixTime);
+        findViewById(R.id.loadingPanel).setVisibility(View.VISIBLE);
+        startActivityForResult(intent,STOP_REQUEST);
+    }
+
+    @Override
+    public void onActivityResult(int requestCode, int resultCode, Intent data) {
+        long unixTime;
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == STOP_REQUEST) {
+            if (resultCode == RESULT_OK) {
+                unixTime = data.getLongExtra("Unix Time", 0);
+                notebook = viewModel.getNotebookByUnixTime(unixTime);
+            }
+        }
+
+        findViewById(R.id.loadingPanel).setVisibility(View.GONE);
+    }
+}

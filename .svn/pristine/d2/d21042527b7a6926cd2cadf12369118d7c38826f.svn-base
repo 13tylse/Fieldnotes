@@ -1,0 +1,41 @@
+package com.example.fieldnotes.database;
+
+import android.arch.lifecycle.LiveData;
+import android.arch.persistence.room.Dao;
+import android.arch.persistence.room.Insert;
+import android.arch.persistence.room.Query;
+import android.arch.persistence.room.Update;
+import com.example.fieldnotes.java.Picture;
+import com.example.fieldnotes.java.Stop;
+import java.util.List;
+import static android.arch.persistence.room.OnConflictStrategy.REPLACE;
+
+
+/**
+ * Data access object for database interaction with <code>Picture</code> objects. Used to map
+ * SQL queries to Java methods for easier access within other packages.
+ *
+ * @author Tyler Seidel (2019)
+ */
+
+@Dao
+public interface PictureDao {
+
+    @Insert()
+    void insert(Picture picture);
+
+    @Query("DELETE FROM pictures_table WHERE parent_stop_id = :parent_unix_time")
+    void deleteALLByStop(long parent_unix_time);
+
+    @Query("SELECT * FROM pictures_table WHERE parent_stop_id = :parent_unix_time")
+    LiveData<List<Picture>> getStopsByNotebook(long parent_unix_time);
+
+    @Query("SELECT * FROM pictures_table")
+    LiveData<List<Picture>> getAllPictures();
+
+    @Update(onConflict = REPLACE)
+    void updatePicture(Picture picture);
+
+
+
+}

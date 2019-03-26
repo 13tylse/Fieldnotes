@@ -1,0 +1,92 @@
+package com.example.fieldnotes.activities;
+
+import android.arch.lifecycle.ViewModelProviders;
+import android.content.Intent;
+import android.net.Uri;
+import android.os.Bundle;
+import android.os.StrictMode;
+import android.support.v7.app.AppCompatActivity;
+import android.view.WindowManager;
+
+import com.example.fieldnotes.R;
+import com.example.fieldnotes.database.FieldNotesViewModel;
+import com.example.fieldnotes.java.Notebook;
+import com.example.fieldnotes.utilities.RtfUtility;
+
+import java.io.File;
+
+/**
+ * An <code>Activity</code> that displays a loading bar while the user waits for
+ * the app to export the passed <code>Notebook</code> to an RTF document. Finishes once the
+ * the document is finished generating.
+ *
+ * @author Steven Hricenak (2019)
+ */
+public class ExportActivity extends AppCompatActivity {
+
+    private static final String THIS_UNIX = "Unix Time";
+
+    private FieldNotesViewModel viewModel;
+
+    private Notebook notebook;
+
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        setContentView(R.layout.activity_export);
+        getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        /*Toolbar toolbar = findViewById(R.id.toolbar);
+        setSupportActionBar(toolbar);
+        getSupportActionBar().setDisplayHomeAsUpEnabled(true);*/
+
+        viewModel = ViewModelProviders.of(this).get(FieldNotesViewModel.class);
+
+        long unixTime = getIntent().getLongExtra(THIS_UNIX, 0);
+
+        notebook = new Notebook(unixTime, viewModel, ExportActivity.this);
+
+        new Thread(new Runnable() {
+            public void run() {
+                File file = RtfUtility.createRTF(notebook);
+                complete(file);
+            }
+        }).start();
+    }
+
+    @Override
+    protected void onStop(){
+        super.onStop();
+        finish();
+    }
+
+    /**
+     * Called once the file is done being generated. Sends control back to the main thread so
+     * <code>finish</code> can be called. Creates an implicit <code>Intent</code> for sharing
+     * a file.
+     *
+     * @param file The RTF generated.
+     */
+    private void complete(final File file){
+        runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                if (file == null)
+                    finish();
+
+                StrictMode.VmPolicy.Builder builder = new StrictMode.VmPolicy.Builder();
+                StrictMode.setVmPolicy(builder.build());
+
+                Intent intent = new Intent();
+                intent.setAction(Intent.ACTION_SEND);
+                intent.setType("text/plain");
+                Uri uri = Uri.fromFile(file);
+                intent.putExtra(Intent.EXTRA_STREAM, uri);
+
+                if (intent.resolveActivity(getPackageManager()) != null)
+                    startActivity(intent);
+                finish();
+            }
+        });
+    }
+
+}
